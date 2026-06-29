@@ -4,6 +4,8 @@ Run [TorrServer](https://github.com/YouROK/TorrServer) on your LG TV. A webOS ho
 
 > Requires a **rooted** webOS TV with the Homebrew Channel.
 
+![TorrServer app UI on webOS](assets/app_ui.png)
+
 ## Build
 
 ```powershell

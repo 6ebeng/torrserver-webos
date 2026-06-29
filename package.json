@@ -1,6 +1,6 @@
 {
 	"name": "torrserver-webos",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "TorrServer torrent stream server packaged as a webOS TV app (.ipk)",
 	"private": true,
 	"scripts": {
