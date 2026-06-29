@@ -1,0 +1,15 @@
+{
+	"name": "torrserver-webos",
+	"version": "1.0.0",
+	"description": "TorrServer torrent stream server packaged as a webOS TV app (.ipk)",
+	"private": true,
+	"scripts": {
+		"build:service": "cd service && npm install --omit=dev --no-audit --no-fund",
+		"package": "ares-package appinfo service -o dist",
+		"build": "powershell -ExecutionPolicy Bypass -File scripts/build.ps1",
+		"deploy": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1"
+	},
+	"devDependencies": {
+		"@webosose/ares-cli": "^2.4.0"
+	}
+}

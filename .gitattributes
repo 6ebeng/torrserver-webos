@@ -1,0 +1,10 @@
+# webOS busybox requires LF line endings for the control scripts.
+*.sh text eol=lf
+service/torrserver-autostart text eol=lf
+
+# PowerShell tooling stays CRLF on Windows.
+*.ps1 text eol=crlf
+
+# Binary assets.
+*.png binary
+*.ipk binary

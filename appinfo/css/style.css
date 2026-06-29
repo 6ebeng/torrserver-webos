@@ -1,0 +1,94 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: #0e1512;
+  color: #e8f3ec;
+  font-family: "LG Smart UI", Arial, Helvetica, sans-serif;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 48px 64px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+header .logo { width: 64px; height: 64px; border-radius: 12px; }
+header h1 { font-size: 44px; font-weight: 700; letter-spacing: 0.5px; }
+
+.badge {
+  margin-left: auto;
+  font-size: 24px;
+  padding: 8px 22px;
+  border-radius: 999px;
+}
+.badge.running { background: #1f7a3d; color: #d6ffe2; }
+.badge.stopped { background: #3a423d; color: #c7d6cd; }
+.badge.busy    { background: #8a6d1f; color: #fff3d6; }
+.badge.error   { background: #8a2727; color: #ffd6d6; }
+
+main { flex: 1; display: flex; flex-direction: column; gap: 28px; min-height: 0; }
+
+.card {
+  background: #16201b;
+  border: 1px solid #26342c;
+  border-radius: 16px;
+  padding: 24px 32px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  font-size: 26px;
+  border-bottom: 1px solid #1f2c24;
+}
+.row:last-child { border-bottom: none; }
+.row .k { color: #8ca397; }
+.row .v { color: #e8f3ec; font-weight: 600; max-width: 70%; text-align: right; word-break: break-all; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 20px; }
+
+.btn {
+  font-size: 30px;
+  font-weight: 600;
+  padding: 20px 42px;
+  border-radius: 14px;
+  border: 3px solid transparent;
+  background: #26342c;
+  color: #e8f3ec;
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.08s ease, border-color 0.08s ease;
+}
+.btn.primary { background: #3fb57a; color: #052314; font-weight: 700; }
+.btn:focus { border-color: #3fb57a; transform: scale(1.05); }
+.btn.primary:focus { border-color: #ffffff; }
+
+#logwrap { flex: 1; overflow: auto; min-height: 0; padding: 18px; }
+#logs {
+  font-family: "Courier New", monospace;
+  font-size: 22px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  color: #b9cabf;
+}
+
+footer { margin-top: 24px; min-height: 32px; font-size: 22px; color: #8ca397; display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+footer b { color: #cdded4; }
+#credit { color: #5c6c63; font-size: 18px; white-space: nowrap; }
+
+.hidden { display: none !important; }
+
+.pill { font-size: 18px; padding: 4px 14px; border-radius: 999px; background: #3fb57a; color: #052314; font-weight: 700; vertical-align: middle; }
+.btn.attention { background: #3fb57a; color: #052314; font-weight: 700; box-shadow: 0 0 0 3px rgba(63, 181, 122, 0.5); }

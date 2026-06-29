@@ -1,0 +1,16 @@
+{
+	"id": "com.torrserver.app",
+	"version": "1.0.0",
+	"vendor": "Tishko Rasoul",
+	"type": "web",
+	"main": "index.html",
+	"title": "TorrServer",
+	"appDescription": "TorrServer torrent streaming server running inside your TV",
+	"icon": "icon.png",
+	"largeIcon": "largeIcon.png",
+	"iconColor": "#3fb57a",
+	"bgColor": "#0e1512",
+	"transparent": true,
+	"disableBackHistoryAPI": true,
+	"handlesRelaunch": true
+}

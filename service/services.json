@@ -1,0 +1,25 @@
+{
+	"id": "com.torrserver.app.service",
+	"description": "TorrServer control service - manages the TorrServer process",
+	"services": [
+		{
+			"name": "com.torrserver.app.service",
+			"description": "Downloads, starts, stops and monitors the TorrServer server",
+			"commands": [
+				{ "name": "status", "description": "Return current TorrServer status" },
+				{ "name": "start", "description": "Start TorrServer (downloads it on first run)" },
+				{ "name": "stop", "description": "Stop TorrServer" },
+				{ "name": "restart", "description": "Restart TorrServer" },
+				{ "name": "install", "description": "Download / re-download the latest TorrServer" },
+				{ "name": "update", "description": "Update TorrServer to the latest release" },
+				{ "name": "getLogs", "description": "Return the tail of the TorrServer log" },
+				{ "name": "checkUpdate", "description": "Check whether a newer TorrServer release exists" },
+				{ "name": "enableAutostart", "description": "Enable launch at boot" },
+				{ "name": "disableAutostart", "description": "Disable launch at boot" },
+				{ "name": "autostart", "description": "Boot hook entry point (starts TorrServer)" },
+				{ "name": "launchLampa", "description": "Launch the Lampa app if installed" },
+				{ "name": "launchMediaPlayer", "description": "Launch the TV media player (Photo/Video or MediaPlayer)" }
+			]
+		}
+	]
+}

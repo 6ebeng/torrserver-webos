@@ -1,0 +1,17 @@
+#!/bin/sh
+#
+# webOS Homebrew startup hook for TorrServer.
+#
+# Copy this file to /var/lib/webosbrew/init.d/torrserver (and chmod +x) so the
+# Homebrew Channel "Startup Script" feature launches TorrServer at boot.
+# The deploy script does this for you when run with -Autostart, and the in-app
+# "Autostart" button manages it via enable-autostart / disable-autostart.
+#
+for d in /media/developer/apps/usr/palm/services/com.torrserver.app.service \
+         /media/cryptofs/apps/usr/palm/services/com.torrserver.app.service; do
+    if [ -f "$d/torrserver-run.sh" ]; then
+        sh "$d/torrserver-run.sh" start >/dev/null 2>&1 &
+        break
+    fi
+done
+exit 0

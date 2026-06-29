@@ -1,0 +1,10 @@
+# Build output
+dist/
+*.ipk
+
+# Dependencies
+node_modules/
+
+# Misc
+*.log
+.DS_Store

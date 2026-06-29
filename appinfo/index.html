@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0">
+    <title>TorrServer</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div id="app">
+        <header>
+            <img src="icon.png" class="logo" alt="">
+            <h1>TorrServer</h1>
+            <span id="badge" class="badge stopped">Stopped</span>
+        </header>
+
+        <main>
+            <section class="card">
+                <div class="row"><span class="k">Status</span><span id="state" class="v">checking&hellip;</span></div>
+                <div class="row"><span class="k">App Version</span><span id="appversion" class="v">1.0.0</span></div>
+                <div class="row"><span class="k">Server Version</span><span class="v"><span id="version">&mdash;</span>
+                        <span id="updatebadge" class="pill hidden">Update available</span></span></div>
+                <div class="row"><span class="k">Architecture</span><span id="arch" class="v">&mdash;</span></div>
+                <div class="row"><span class="k">Autostart</span><span id="autostart" class="v">&mdash;</span></div>
+                <div class="row"><span class="k">Data directory</span><span id="datadir" class="v">&mdash;</span></div>
+                <div class="row"><span class="k">Access URL</span><span id="urls" class="v">&mdash;</span></div>
+            </section>
+
+            <section class="actions">
+                <button id="btnStart" class="btn primary">Start</button>
+                <button id="btnStop" class="btn">Stop</button>
+                <button id="btnRestart" class="btn">Restart</button>
+                <button id="btnUpdate" class="btn">Update server</button>
+                <button id="btnAutostart" class="btn">Autostart: On</button>
+                <button id="btnOpen" class="btn">Open Web UI</button>
+                <button id="btnLampa" class="btn hidden">Lampa</button>
+                <button id="btnMedia" class="btn">MediaPlayer</button>
+                <button id="btnLogs" class="btn">Logs</button>
+            </section>
+
+            <section id="logwrap" class="card hidden">
+                <pre id="logs"></pre>
+            </section>
+        </main>
+
+        <footer>
+            <span id="msg">Press <b>Start</b>. On first launch TorrServer is downloaded automatically.</span>
+            <span id="credit">Coded by Tishko Rasoul &middot; github.com/6ebeng/torrserver-webos</span>
+        </footer>
+    </div>
+
+    <script src="js/luna-bridge.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>

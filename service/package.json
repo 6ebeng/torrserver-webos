@@ -1,0 +1,10 @@
+{
+	"name": "com.torrserver.app.service",
+	"version": "1.0.0",
+	"description": "TorrServer control service for webOS",
+	"main": "service.js",
+	"private": true,
+	"dependencies": {
+		"webos-service": "git+https://github.com/webosose/nodejs-module-webos-service.git"
+	}
+}
