@@ -10,6 +10,7 @@
 	}
 
 	var pollTimer = null;
+	var updateTimer = null;
 	var firstUrl = null;
 	var logsVisible = false;
 	var autostartOn = true;
@@ -124,6 +125,67 @@
 		pollTimer = setInterval(poll, POLL_MS);
 	}
 
+	// Resume foreground activity after the app returns to the foreground.
+	// Idempotent: only (re)starts timers that are not already running, then
+	// restores D-pad focus so the screen is never left frozen.
+	function resume() {
+		if (!pollTimer) startPolling();
+		if (!updateTimer) {
+			checkUpdate();
+			updateTimer = setInterval(checkUpdate, 30 * 60 * 1000);
+		}
+		var btns = visibleButtons();
+		if (btns.length && (!document.activeElement || document.activeElement === document.body)) {
+			btns[0].focus();
+		}
+	}
+
+	// Pause all timers when the app leaves the foreground so it makes no
+	// service calls while hidden.
+	function pause() {
+		if (pollTimer) {
+			clearInterval(pollTimer);
+			pollTimer = null;
+		}
+		if (updateTimer) {
+			clearInterval(updateTimer);
+			updateTimer = null;
+		}
+	}
+
+	// Handle a webOS relaunch (the user reselects the app while it is still
+	// running in the background). With handlesRelaunch:true the system does NOT
+	// bring us to the foreground automatically — the app must request it via
+	// PalmSystem.activate(), otherwise clicking the launcher icon appears to do
+	// nothing. This is the core fix for the "app won't reopen" bug.
+	function onRelaunch() {
+		try {
+			if (window.PalmSystem && typeof window.PalmSystem.activate === 'function') {
+				window.PalmSystem.activate();
+			}
+		} catch (e) {}
+		resume();
+	}
+
+	// Register every foreground/background signal webOS may deliver so polling
+	// and focus track the app's visibility reliably across TV models.
+	function setupLifecycle() {
+		function onVisibility() {
+			if (document.hidden || document.webkitHidden || document.visibilityState === 'hidden') {
+				pause();
+			} else {
+				resume();
+			}
+		}
+		document.addEventListener('visibilitychange', onVisibility, false);
+		document.addEventListener('webkitvisibilitychange', onVisibility, false);
+		document.addEventListener('webOSRelaunch', onRelaunch, false);
+		window.addEventListener('focus', resume, false);
+		window.addEventListener('blur', pause, false);
+		window.addEventListener('pageshow', resume, false);
+		window.addEventListener('pagehide', pause, false);
+	}
+
 	function checkUpdate() {
 		svc('checkUpdate', {}, function (r) {
 			var avail = r && r.updateAvailable;
@@ -227,9 +289,10 @@
 	window.addEventListener('load', function () {
 		wire();
 		setupNav();
+		setupLifecycle();
 		startPolling();
 		checkUpdate();
-		setInterval(checkUpdate, 30 * 60 * 1000);
+		updateTimer = setInterval(checkUpdate, 30 * 60 * 1000);
 
 		var xhr = new XMLHttpRequest();
 		xhr.open('GET', 'appinfo.json', true);
