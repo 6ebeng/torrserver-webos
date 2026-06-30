@@ -221,6 +221,26 @@ do_start() {
     # Legacy parity: make any mounted USB storage writable for TorrServer caches.
     chmod -R 777 /tmp/usb 2>/dev/null
 
+    # Seed a TV-safe default config if missing to prevent DHT/uTP from exhausting
+    # the limited webOS network stack (nf_conntrack) which breaks streaming.
+    SETTINGS_FILE="$DATA_SUB/settings.json"
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        cat > "$SETTINGS_FILE" <<EOF
+{
+  "BitTorr": {
+    "CacheSize": 67108864,
+    "ConnectionsLimit": 100,
+    "DisableDHT": true,
+    "DisableUPNP": true,
+    "DisableUTP": true,
+    "DisablePEX": true,
+    "EnableLPD": false,
+    "StoreSettingsInJson": true
+  }
+}
+EOF
+    fi
+
     cd "$APP_DIR" 2>/dev/null || { set_state "error:chdir"; return 1; }
     # GODEBUG=madvdontneed=1 keeps the Go runtime from returning memory to the OS
     # too eagerly - the same tuning the original launcher used on webOS.
