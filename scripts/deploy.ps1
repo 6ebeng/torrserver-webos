@@ -8,13 +8,13 @@
 # (which will prompt for the password).
 
 param(
-    [string]$TVHost = '10.5.50.13',
-    [string]$User = 'root',
-    [string]$Password = 'alpine',
-    [int]   $SshPort = 22,
-    [string]$KeyPath = "$env:USERPROFILE\.ssh\torrserver_tv",
-    [switch]$NoBuild,
-    [switch]$Autostart
+  [string]$TVHost = '10.5.50.13',
+  [string]$User = 'root',
+  [string]$Password = 'alpine',
+  [int]   $SshPort = 22,
+  [string]$KeyPath = "$env:USERPROFILE\.ssh\torrserver_tv",
+  [switch]$NoBuild,
+  [switch]$Autostart
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,7 +23,7 @@ $AppId = 'com.torrserver.app'
 $SvcId = 'com.torrserver.app.service'
 
 if (-not $NoBuild) {
-    & (Join-Path $PSScriptRoot 'build.ps1')
+  & (Join-Path $PSScriptRoot 'build.ps1')
 }
 
 $ipk = Get-ChildItem (Join-Path $root 'dist\*.ipk') -ErrorAction SilentlyContinue |
@@ -38,28 +38,28 @@ $usePutty = $plink -and $pscp
 $useKey = (Test-Path $KeyPath)
 
 function Copy-ToTV($local, $remote) {
-    if ($usePutty) {
-        & pscp.exe -batch -pw $Password -P $SshPort $local "$User@${TVHost}:$remote"
-    }
-    elseif ($useKey) {
-        & scp -i $KeyPath -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -P $SshPort $local "$User@${TVHost}:$remote"
-    }
-    else {
-        & scp -o StrictHostKeyChecking=accept-new -P $SshPort $local "$User@${TVHost}:$remote"
-    }
-    if ($LASTEXITCODE -ne 0) { throw "Copy failed ($local -> $remote)" }
+  if ($usePutty) {
+    & pscp.exe -batch -pw $Password -P $SshPort $local "$User@${TVHost}:$remote"
+  }
+  elseif ($useKey) {
+    & scp -i $KeyPath -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -P $SshPort $local "$User@${TVHost}:$remote"
+  }
+  else {
+    & scp -o StrictHostKeyChecking=accept-new -P $SshPort $local "$User@${TVHost}:$remote"
+  }
+  if ($LASTEXITCODE -ne 0) { throw "Copy failed ($local -> $remote)" }
 }
 
 function Invoke-TV($cmd) {
-    if ($usePutty) {
-        & plink.exe -batch -pw $Password -P $SshPort "$User@$TVHost" $cmd
-    }
-    elseif ($useKey) {
-        & ssh -i $KeyPath -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -p $SshPort "$User@$TVHost" $cmd
-    }
-    else {
-        & ssh -o StrictHostKeyChecking=accept-new -p $SshPort "$User@$TVHost" $cmd
-    }
+  if ($usePutty) {
+    & plink.exe -batch -pw $Password -P $SshPort "$User@$TVHost" $cmd
+  }
+  elseif ($useKey) {
+    & ssh -i $KeyPath -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -p $SshPort "$User@$TVHost" $cmd
+  }
+  else {
+    & ssh -o StrictHostKeyChecking=accept-new -p $SshPort "$User@$TVHost" $cmd
+  }
 }
 
 # 1. Copy the package to the TV.
@@ -108,7 +108,7 @@ fi
 '@
 
 if ($Autostart) {
-    $remote += @'
+  $remote += @'
 
 mkdir -p /var/lib/webosbrew/init.d
 for d in /media/developer/apps/usr/palm/services/com.torrserver.app.service /media/cryptofs/apps/usr/palm/services/com.torrserver.app.service; do

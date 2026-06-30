@@ -21,10 +21,7 @@ var PORT = 8090;
 var SCRIPT = path.join(__dirname, 'torrserver-run.sh');
 var AUTOSTART_HOOK = '/var/lib/webosbrew/init.d/torrserver';
 var LAMPA_ID = 'com.lampa.tv';
-var LAMPA_DIRS = [
-	'/media/developer/apps/usr/palm/applications/com.lampa.tv',
-	'/media/cryptofs/apps/usr/palm/applications/com.lampa.tv',
-];
+var LAMPA_DIRS = ['/media/developer/apps/usr/palm/applications/com.lampa.tv', '/media/cryptofs/apps/usr/palm/applications/com.lampa.tv'];
 
 var service = new Service(SERVICE_ID);
 
