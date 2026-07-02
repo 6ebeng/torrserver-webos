@@ -83,16 +83,25 @@ main > *:last-child { margin-bottom: 0; }
 .btn.primary { background: #3fb57a; color: #052314; font-weight: 700; }
 .btn:focus { border-color: #3fb57a; transform: scale(1.05); }
 .btn.primary:focus { border-color: #ffffff; }
-/* Greyed-out, non-interactive button (e.g. Autostart on a non-rooted TV). */
-.btn:disabled, .btn.disabled { background: #1c2621; color: #5c6c63; cursor: default; }
-.btn:disabled:focus, .btn.disabled:focus { border-color: transparent; transform: none; }
-/* Transient loading state shown immediately after a control is pressed, so the
-   press always gives feedback even before the next status poll arrives. */
-.btn.busy { background: #243c30; color: #9fe0bf; cursor: default;
+/* Greyed-out button. Dimmed via opacity but kept focusable (class-based, not
+   the disabled attribute) so the D-pad can still land on it; its onclick guard
+   ignores the press. */
+.btn.disabled { opacity: 0.45; color: #7c8c83; background: #1c2621; }
+.btn.disabled:focus { border-color: #3a4a41; transform: scale(1.02); }
+/* Click feedback: a button whose action is in progress pulses amber and stays
+   fully visible (overriding the dimmed .disabled look) so the press clearly
+   registered, even before the first status poll arrives. */
+.btn.loading { opacity: 1; color: #fff3d6; background: #8a6d1f;
   -webkit-animation: btnpulse 1s ease-in-out infinite; animation: btnpulse 1s ease-in-out infinite; }
-.btn.busy:focus { border-color: transparent; transform: none; }
-@-webkit-keyframes btnpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-@keyframes btnpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.btn.loading:focus { border-color: #e0952a; transform: scale(1.05); }
+@-webkit-keyframes btnpulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 149, 42, 0); }
+  50%      { box-shadow: 0 0 0 5px rgba(224, 149, 42, 0.55); }
+}
+@keyframes btnpulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 149, 42, 0); }
+  50%      { box-shadow: 0 0 0 5px rgba(224, 149, 42, 0.55); }
+}
 
 #logwrap { flex: 1; overflow: auto; min-height: 0; padding: 18px; }
 #logs {

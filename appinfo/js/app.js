@@ -22,8 +22,16 @@
 	var hookKnown = false; // hookOn has been read at least once
 	var pickerOpen = false;
 	var currentVersion = '';
+	var updateAvailable = false; // a newer TorrServer release is available to install
+	var lastStatus = {}; // most recent status, so button state can be recomputed any time
 	var lampaAppId = null; // resolved Lampa app id (varies by build: lampa.tv, com.lampa.tv…)
 	var lampaChecked = false; // frontend launch-point scan has completed
+	// Action feedback: which button was pressed and a short lock window during
+	// which the action buttons stay in a "loading" state, giving instant press
+	// feedback before the first status poll arrives. Once the lock expires the
+	// buttons follow the real server state, so nothing can get stuck greyed.
+	var pendingBtnId = null;
+	var clickLockUntil = 0;
 
 	// Homebrew Channel service — its methods are all in the public Luna group, so a
 	// normal web app may call them. We use `exec` (runs as root) to manage the
@@ -96,25 +104,80 @@
 		return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + ' MB';
 	}
 
-	// Enable or disable an action button while preserving its variant class, so
-	// the UI only offers actions that make sense for the current server state.
-	function setEnabled(id, on) {
-		var b = $(id);
-		var cls = 'btn' + (id === 'btnStart' ? ' primary' : '');
-		b.className = cls + (on ? '' : ' disabled');
-		b.disabled = !on;
+	// Toggle a button's greyed-out state via a CSS class (not the disabled
+	// attribute) so it keeps keyboard focus and D-pad navigation still works,
+	// while its onclick guard ignores activation.
+	function setBtnDisabled(btn, disabled) {
+		if (!btn) return;
+		if (disabled) {
+			if (btn.className.indexOf('disabled') === -1) btn.className += ' disabled';
+		} else {
+			btn.className = btn.className.replace(/\s*disabled/g, '');
+		}
+	}
+	function addClass(btn, c) {
+		if (btn && btn.className.indexOf(c) === -1) btn.className += ' ' + c;
+	}
+	function removeClass(btn, c) {
+		if (btn) btn.className = btn.className.replace(new RegExp('\\s*' + c, 'g'), '');
+	}
+	function isDisabled(btn) {
+		return !!btn && btn.className.indexOf('disabled') !== -1;
 	}
 
-	// Give a control an immediate "working" look the moment it is pressed. The
-	// next status poll (render) restores the correct enabled/disabled state.
-	function flashBusy(id) {
-		var b = $(id);
-		b.className = 'btn busy';
-		b.disabled = true;
+	// Transitional server states where an action is already under way and the
+	// action buttons must stay locked/greyed until it resolves.
+	function isBusyState(st) {
+		st = st || '';
+		return st === 'starting' || st === 'downloading' || st === 'stopping' || st === 'restarting';
+	}
+
+	// Drive the enabled/disabled + loading state of every action button from the
+	// latest status, so e.g. Start greys out while running and Update greys out
+	// when there is nothing to update. The pressed button pulses while its action
+	// is in flight.
+	function updateButtons(s) {
+		s = s || lastStatus || {};
+		var running = !!s.running;
+		// "locked" is a brief window right after a press so the pressed button shows
+		// loading instantly. Once it expires the buttons follow the real server
+		// state, so nothing stays greyed if an action changed nothing.
+		var locked = Date.now() < clickLockUntil;
+		if (!locked) clickLockUntil = 0;
+		var busy = isBusyState(s.state) || locked;
+		if (!busy) pendingBtnId = null;
+
+		setBtnDisabled($('btnStart'), running || busy);
+		setBtnDisabled($('btnStop'), !running || busy);
+		setBtnDisabled($('btnRestart'), !running || busy);
+		setBtnDisabled($('btnSelectVersion'), busy);
+		setBtnDisabled($('btnOpen'), !running || !firstUrl);
+		setBtnDisabled($('btnUpdate'), !updateAvailable || busy);
+		setBtnDisabled($('btnAutostart'), !autostartAvailable || autostartBusy || busy);
+
+		// Highlight Update only when there is genuinely something to install.
+		if (updateAvailable && !busy) addClass($('btnUpdate'), 'attention');
+		else removeClass($('btnUpdate'), 'attention');
+
+		// Pulse the pressed button (and the autostart toggle while it works).
+		var ids = ['btnStart', 'btnStop', 'btnRestart', 'btnUpdate', 'btnAutostart', 'btnSelectVersion'];
+		for (var i = 0; i < ids.length; i++) removeClass($(ids[i]), 'loading');
+		if (busy && pendingBtnId) addClass($(pendingBtnId), 'loading');
+		if (autostartBusy) addClass($('btnAutostart'), 'loading');
+	}
+
+	// Record the pressed button and open a short feedback window so the press
+	// shows a loading pulse instantly, before the first status poll arrives.
+	function beginAction(btnId, message) {
+		pendingBtnId = btnId;
+		clickLockUntil = Date.now() + 10000;
+		if (message) msg(message);
+		updateButtons(lastStatus);
 	}
 
 	function render(s) {
 		s = s || {};
+		lastStatus = s;
 		setBadge(s.running, s.state);
 
 		var stateText = s.state || (s.running ? 'running' : 'stopped');
@@ -152,18 +215,12 @@
 		if (autostartBusy) {
 			$('autostart').textContent = 'Working…';
 			btnA.textContent = 'Autostart: …';
-			btnA.disabled = true;
-			btnA.className = 'btn disabled';
 		} else if (autostartAvailable) {
 			$('autostart').textContent = autostartOn ? 'Enabled' : 'Disabled';
 			btnA.textContent = 'Autostart: ' + (autostartOn ? 'On' : 'Off');
-			btnA.disabled = false;
-			btnA.className = 'btn';
 		} else {
 			$('autostart').textContent = 'Unavailable (TV not rooted)';
 			btnA.textContent = 'Autostart: N/A';
-			btnA.disabled = true;
-			btnA.className = 'btn disabled';
 		}
 		// Show the Lampa shortcut when Lampa is installed. The startup scan yields
 		// the exact app id to launch; the service's own fs check is a fallback so
@@ -174,28 +231,13 @@
 		firstUrl = urls.length ? urls[0] : null;
 		$('urls').textContent = urls.length ? urls.join('    ') : 'http://<tv-ip>:' + (s.port || 8090);
 
-		// Only offer the actions that make sense for the current state: no Start
-		// while running, no Stop/Restart while stopped, no Open without a URL.
-		var st = s.state || (s.running ? 'running' : 'stopped');
-		var transitioning = st === 'starting' || st === 'downloading' || st === 'stopping' || st === 'restarting';
-		setEnabled('btnStart', !s.running && !transitioning);
-		setEnabled('btnStop', !!s.running || st === 'starting' || st === 'downloading');
-		setEnabled('btnRestart', !!s.running);
-		setEnabled('btnOpen', !!s.running && !!firstUrl);
+		// Drive all action buttons (enabled/disabled + loading pulse) from status.
+		updateButtons(s);
 
 		if (s.state && s.state.indexOf('error') === 0) {
 			msg('Failed: ' + s.state + ' — open <b>Logs</b> for details, then press <b>Start</b> to retry.');
 		} else if (s.running) {
 			msg('Running. Manage TorrServer from any device at the Access URL above.');
-		}
-
-		// If the button that had focus just became disabled (e.g. Start after the
-		// server comes up), move focus to the first available control so the
-		// remote never lands on a dead button.
-		var ae = document.activeElement;
-		if (ae && ae.disabled && /(^|\s)btn(\s|$)/.test(ae.className || '')) {
-			var vb = visibleButtons();
-			if (vb.length) vb[0].focus();
 		}
 	}
 
@@ -304,20 +346,16 @@
 
 	function checkUpdate() {
 		svc('checkUpdate', {}, function (r) {
-			var avail = r && r.updateAvailable;
-			$('updatebadge').className = 'pill' + (avail ? '' : ' hidden');
-			if (avail) {
-				$('btnUpdate').className = 'btn attention';
-				$('btnUpdate').disabled = false;
+			updateAvailable = !!(r && r.updateAvailable);
+			$('updatebadge').className = 'pill' + (updateAvailable ? '' : ' hidden');
+			if (updateAvailable) {
 				$('btnUpdate').textContent = 'Update to ' + r.latest;
 				msg('A new TorrServer version (<b>' + r.latest + '</b>) is available. Press <b>Update</b> to install.');
 			} else {
-				// Already on the latest release: grey the button out so it is clear
-				// there is nothing to update right now.
-				$('btnUpdate').className = 'btn disabled';
-				$('btnUpdate').disabled = true;
 				$('btnUpdate').textContent = 'Update server';
 			}
+			// Let the centralised logic grey/highlight the Update button.
+			updateButtons(lastStatus);
 		});
 	}
 
@@ -422,7 +460,7 @@
 			closeVersionPicker();
 			return;
 		}
-		msg('Installing TorrServer <b>' + escapeHtml(tag) + '</b>… this can take a minute.');
+		beginAction('btnSelectVersion', 'Installing TorrServer <b>' + escapeHtml(tag) + '</b>… this can take a minute.');
 		svc('selectVersion', { version: tag }, poll);
 		closeVersionPicker();
 		setTimeout(checkUpdate, 60000);
@@ -430,18 +468,18 @@
 
 	function wire() {
 		$('btnStart').onclick = function () {
-			msg('Starting… first launch downloads TorrServer (~70&nbsp;MB), this can take a minute.');
-			flashBusy('btnStart');
+			if (isDisabled($('btnStart'))) return;
+			beginAction('btnStart', 'Starting… first launch downloads TorrServer (~70&nbsp;MB), this can take a minute.');
 			svc('start', {}, poll);
 		};
 		$('btnStop').onclick = function () {
-			msg('Stopping…');
-			flashBusy('btnStop');
+			if (isDisabled($('btnStop'))) return;
+			beginAction('btnStop', 'Stopping…');
 			stopServer(poll);
 		};
 		$('btnRestart').onclick = function () {
-			msg('Restarting…');
-			flashBusy('btnRestart');
+			if (isDisabled($('btnRestart'))) return;
+			beginAction('btnRestart', 'Restarting…');
 			// Clear any root-owned instance first so the (jailed) service can
 			// cleanly restart its own instance instead of seeing it "running".
 			rootKill(function () {
@@ -449,18 +487,20 @@
 			});
 		};
 		$('btnUpdate').onclick = function () {
-			msg('Updating to the latest TorrServer release…');
-			// The pending update is being acted on, so show the busy state and
-			// clear the badge right away instead of waiting for the next check.
-			flashBusy('btnUpdate');
+			if (isDisabled($('btnUpdate'))) return;
+			beginAction('btnUpdate', 'Updating to the latest TorrServer release…');
+			// Clear the badge right away instead of waiting for the next check.
 			$('updatebadge').className = 'pill hidden';
 			svc('update', {}, poll);
 			setTimeout(checkUpdate, 60000);
 		};
-		$('btnSelectVersion').onclick = openVersionPicker;
+		$('btnSelectVersion').onclick = function () {
+			if (isDisabled($('btnSelectVersion'))) return;
+			openVersionPicker();
+		};
 		$('btnVCancel').onclick = closeVersionPicker;
 		$('btnAutostart').onclick = function () {
-			if (autostartBusy) return;
+			if (isDisabled($('btnAutostart')) || autostartBusy) return;
 			// On a rooted TV we manage the boot hook directly via the Homebrew
 			// Channel (root exec) — reliable regardless of service elevation.
 			if (hbRooted === true) {
@@ -509,6 +549,7 @@
 			svc('launchMediaPlayer', {});
 		};
 		$('btnOpen').onclick = function () {
+			if (isDisabled($('btnOpen'))) return;
 			if (firstUrl) {
 				window.location.href = firstUrl;
 			} else {
@@ -629,6 +670,7 @@
 	function toggleAutostart() {
 		if (autostartBusy) return;
 		autostartBusy = true;
+		updateButtons(lastStatus); // instant loading pulse on the autostart button
 		if (autostartOn) {
 			msg('Disabling autostart…');
 			hbExec(
@@ -666,12 +708,13 @@
 		}
 	}
 
-	// D-pad navigation across the currently visible, enabled buttons only (the
-	// Lampa shortcut is hidden until Lampa is detected, and the Autostart button
-	// is disabled/greyed on non-rooted TVs).
+	// D-pad navigation across the currently visible buttons (the Lampa shortcut
+	// is hidden until Lampa is detected). Greyed/disabled buttons stay in the
+	// cycle so focus never jumps unexpectedly; their onclick guards ignore the
+	// press.
 	function visibleButtons() {
 		return Array.prototype.slice.call(document.querySelectorAll('.btn')).filter(function (b) {
-			return b.offsetParent !== null && !b.disabled;
+			return b.offsetParent !== null;
 		});
 	}
 
