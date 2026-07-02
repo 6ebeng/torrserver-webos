@@ -228,7 +228,7 @@ do_install() {
     arch=$(detect_arch)
     asset="TorrServer-linux-$arch"
     _want="${1:-}"
-    set_state "downloading"
+    [ "${TS_QUIET:-}" = 1 ] || set_state "downloading"
     json="$DATA_DIR/release.json"
     rm -f "$PART" "$TOTALFILE" 2>/dev/null
 
@@ -269,7 +269,7 @@ do_install() {
     [ -n "$ver" ] && echo "$ver" >"$VERFILE"
     echo "$arch" >"$ARCHFILE"
     rm -f "$json" 2>/dev/null
-    set_state "stopped"
+    [ "${TS_QUIET:-}" = 1 ] || set_state "stopped"
     return 0
 }
 
@@ -280,7 +280,7 @@ do_start() {
     have=$(cat "$ARCHFILE" 2>/dev/null)
     if [ ! -x "$BIN" ] || [ "$want" != "$have" ]; then do_install || return 1; fi
 
-    set_state "starting"
+    [ "${TS_QUIET:-}" = 1 ] || set_state "starting"
     # Legacy parity: make any mounted USB storage writable for TorrServer caches.
     chmod -R 777 /tmp/usb 2>/dev/null
 
@@ -341,6 +341,7 @@ EOF
 }
 
 do_stop() {
+    [ "${TS_QUIET:-}" = 1 ] || set_state "stopping"
     if [ -f "$PIDFILE" ]; then
         _p=$(cat "$PIDFILE" 2>/dev/null)
         if [ -n "$_p" ]; then
@@ -365,7 +366,7 @@ do_stop() {
     done
     # Brief grace period for the TCP socket to flush out of TIME_WAIT.
     sleep 1
-    set_state "stopped"
+    [ "${TS_QUIET:-}" = 1 ] || set_state "stopped"
     return 0
 }
 
@@ -373,10 +374,13 @@ do_status() {
     if is_running; then r=true; else r=false; fi
     if [ -x "$BIN" ]; then ins=true; else ins=false; fi
     st=$(cat "$STATEFILE" 2>/dev/null); [ -z "$st" ] && st="idle"
-    # If the process is gone, never report a stale "running/starting/…" state
-    # (e.g. after the server was killed out-of-band on a rooted TV).
+    # If the process is gone, never report a stale "running" state (e.g. after
+    # the server was killed out-of-band on a rooted TV). Transitional states
+    # (starting/stopping/restarting/updating/installing/downloading) are driven
+    # by an in-progress background operation that sets the terminal state
+    # itself, so leave them alone here so the UI can show real progress.
     if [ "$r" = false ]; then
-        case "$st" in running|starting|downloading|restarting) st="stopped" ;; esac
+        case "$st" in running) st="stopped" ;; esac
     fi
     ver=$(cat "$VERFILE" 2>/dev/null)
     arch=$(detect_arch)
@@ -410,8 +414,8 @@ case "${1:-}" in
     disable-autostart) disable_autostart && echo "disabled" || echo "failed"; : >"$AUTOSTART_INIT" 2>/dev/null ;;
     _start)   do_start ;;
     _install) do_install ;;
-    _restart) do_stop; do_start ;;
-    _update)  do_stop; do_install && do_start ;;
-    _install_version) do_stop; do_install "$(cat "$WANTVERFILE" 2>/dev/null)" && do_start ;;
+    _restart) TS_QUIET=1; set_state "restarting"; do_stop; do_start ;;
+    _update)  TS_QUIET=1; set_state "updating"; do_stop; do_install && do_start ;;
+    _install_version) TS_QUIET=1; set_state "installing"; do_stop; do_install "$(cat "$WANTVERFILE" 2>/dev/null)" && do_start ;;
     *) echo "usage: $0 {install|start|stop|restart|update|status|logs|datadir|latest|versions|select-version|enable-autostart|disable-autostart}"; exit 1 ;;
 esac

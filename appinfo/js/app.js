@@ -32,6 +32,10 @@
 	// buttons follow the real server state, so nothing can get stuck greyed.
 	var pendingBtnId = null;
 	var clickLockUntil = 0;
+	// Expected server-running outcome of the pending action (true after Start/
+	// Restart/Update/Select, false after Stop, null = don't care) so the loading
+	// pulse can end the instant that outcome actually shows.
+	var pendingWant = null;
 
 	// Homebrew Channel service — its methods are all in the public Luna group, so a
 	// normal web app may call them. We use `exec` (runs as root) to manage the
@@ -129,7 +133,14 @@
 	// action buttons must stay locked/greyed until it resolves.
 	function isBusyState(st) {
 		st = st || '';
-		return st === 'starting' || st === 'downloading' || st === 'stopping' || st === 'restarting';
+		return (
+			st === 'starting' ||
+			st === 'stopping' ||
+			st === 'restarting' ||
+			st === 'downloading' ||
+			st === 'updating' ||
+			st === 'installing'
+		);
 	}
 
 	// Drive the enabled/disabled + loading state of every action button from the
@@ -143,9 +154,20 @@
 		// loading instantly. Once it expires the buttons follow the real server
 		// state, so nothing stays greyed if an action changed nothing.
 		var locked = Date.now() < clickLockUntil;
+		// End the bridge the instant the action's outcome actually shows (server
+		// running/stopped as expected, or an error) so the loading pulse stops
+		// immediately instead of running the full lock window.
+		if (locked) {
+			var settled = (s.state || '').indexOf('error') === 0;
+			if (!settled && pendingWant !== null && !isBusyState(s.state) && running === pendingWant) settled = true;
+			if (settled) locked = false;
+		}
 		if (!locked) clickLockUntil = 0;
 		var busy = isBusyState(s.state) || locked;
-		if (!busy) pendingBtnId = null;
+		if (!busy) {
+			pendingBtnId = null;
+			pendingWant = null;
+		}
 
 		setBtnDisabled($('btnStart'), running || busy);
 		setBtnDisabled($('btnStop'), !running || busy);
@@ -168,8 +190,9 @@
 
 	// Record the pressed button and open a short feedback window so the press
 	// shows a loading pulse instantly, before the first status poll arrives.
-	function beginAction(btnId, message) {
+	function beginAction(btnId, message, wantRunning) {
 		pendingBtnId = btnId;
+		pendingWant = typeof wantRunning === 'boolean' ? wantRunning : null;
 		clickLockUntil = Date.now() + 10000;
 		if (message) msg(message);
 		updateButtons(lastStatus);
@@ -180,18 +203,28 @@
 		lastStatus = s;
 		setBadge(s.running, s.state);
 
-		var stateText = s.state || (s.running ? 'running' : 'stopped');
+		var st0 = s.state || (s.running ? 'running' : 'stopped');
 		var dl = +s.downloadedBytes || 0;
 		var tot = +s.totalBytes || 0;
-		if (s.state === 'downloading') {
+		var stateText;
+		if (st0 === 'downloading' || st0 === 'updating' || st0 === 'installing') {
+			var verb = st0 === 'downloading' ? 'Downloading' : st0 === 'updating' ? 'Updating' : 'Installing';
 			if (tot > 0) {
 				var pct = Math.max(0, Math.min(100, Math.round((dl / tot) * 100)));
-				stateText = 'downloading ' + fmtMB(dl) + ' / ' + fmtMB(tot) + ' (' + pct + '%)';
+				stateText = verb + ' ' + fmtMB(dl) + ' / ' + fmtMB(tot) + ' (' + pct + '%)';
 			} else if (dl > 0) {
-				stateText = 'downloading ' + fmtMB(dl) + '…';
+				stateText = verb + ' ' + fmtMB(dl) + '…';
 			} else {
-				stateText = 'downloading… (contacting GitHub)';
+				stateText = verb + '… (contacting GitHub)';
 			}
+		} else if (st0 === 'starting') {
+			stateText = 'Starting…';
+		} else if (st0 === 'stopping') {
+			stateText = 'Stopping…';
+		} else if (st0 === 'restarting') {
+			stateText = 'Restarting…';
+		} else {
+			stateText = st0;
 		}
 		$('state').textContent = stateText;
 		$('version').textContent = s.version || '—';
@@ -460,7 +493,7 @@
 			closeVersionPicker();
 			return;
 		}
-		beginAction('btnSelectVersion', 'Installing TorrServer <b>' + escapeHtml(tag) + '</b>… this can take a minute.');
+		beginAction('btnSelectVersion', 'Installing TorrServer <b>' + escapeHtml(tag) + '</b>… this can take a minute.', true);
 		svc('selectVersion', { version: tag }, poll);
 		closeVersionPicker();
 		setTimeout(checkUpdate, 60000);
@@ -469,17 +502,17 @@
 	function wire() {
 		$('btnStart').onclick = function () {
 			if (isDisabled($('btnStart'))) return;
-			beginAction('btnStart', 'Starting… first launch downloads TorrServer (~70&nbsp;MB), this can take a minute.');
+			beginAction('btnStart', 'Starting… first launch downloads TorrServer (~70&nbsp;MB), this can take a minute.', true);
 			svc('start', {}, poll);
 		};
 		$('btnStop').onclick = function () {
 			if (isDisabled($('btnStop'))) return;
-			beginAction('btnStop', 'Stopping…');
+			beginAction('btnStop', 'Stopping…', false);
 			stopServer(poll);
 		};
 		$('btnRestart').onclick = function () {
 			if (isDisabled($('btnRestart'))) return;
-			beginAction('btnRestart', 'Restarting…');
+			beginAction('btnRestart', 'Restarting…', true);
 			// Clear any root-owned instance first so the (jailed) service can
 			// cleanly restart its own instance instead of seeing it "running".
 			rootKill(function () {
@@ -488,7 +521,7 @@
 		};
 		$('btnUpdate').onclick = function () {
 			if (isDisabled($('btnUpdate'))) return;
-			beginAction('btnUpdate', 'Updating to the latest TorrServer release…');
+			beginAction('btnUpdate', 'Updating to the latest TorrServer release…', true);
 			// Clear the badge right away instead of waiting for the next check.
 			$('updatebadge').className = 'pill hidden';
 			svc('update', {}, poll);
