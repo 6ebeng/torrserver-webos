@@ -182,8 +182,14 @@ do_versions() {
     fi
     _j="$DATA_DIR/releases.json"
     if download "$RELEASES_URL" "$_j"; then
-        _tags=$(grep -o '"tag_name"[ ]*:[ ]*"[^"]*"' "$_j" | sed 's/.*"\([^"]*\)"$/\1/')
-        rm -f "$_j" 2>/dev/null
+        # Every release object carries exactly one "tag_name" and one
+        # "prerelease" flag, in the same order, so extract both lists and pair
+        # them line-for-line as "tag<TAB>true|false". This lets the UI label
+        # pre-releases and pick the newest STABLE release as "latest".
+        grep -oE '"tag_name"[ ]*:[ ]*"[^"]*"' "$_j" | sed 's/.*"\([^"]*\)"$/\1/' > "$_j.tags"
+        grep -oE '"prerelease"[ ]*:[ ]*(true|false)' "$_j" | sed 's/.*:[ ]*//' > "$_j.pre"
+        _tags=$(awk 'NR==FNR{p[FNR]=$0; next}{printf "%s\t%s\n", $0, (p[FNR]=="" ? "false" : p[FNR])}' "$_j.pre" "$_j.tags")
+        rm -f "$_j" "$_j.tags" "$_j.pre" 2>/dev/null
         if [ -n "$_tags" ]; then
             printf '%s\n' "$_tags" >"$VERSIONSFILE"
             cat "$VERSIONSFILE"

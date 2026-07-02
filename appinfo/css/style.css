@@ -151,5 +151,17 @@ footer b { color: #cdded4; }
 .vitem:last-child { margin-bottom: 0; }
 .vitem.current { background: #1f7a3d; color: #d6ffe2; }
 .vitem:focus { border-color: #3fb57a; transform: scale(1.02); }
-.vitem .tag-note { float: right; font-size: 20px; color: #8ca397; font-weight: 600; }
+.vitem .tag-notes { float: right; }
+.chip-note {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  padding: 3px 12px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.chip-note.latest { background: #3fb57a; color: #052314; }
+.chip-note.pre { background: #8a6d1f; color: #fff3d6; }
+.chip-note.installed { background: #0f1713; color: #b9cabf; }
 .dialog-actions { display: flex; justify-content: flex-end; }

@@ -155,6 +155,12 @@ service.register('listVersions', function (message) {
 			})
 			.filter(function (v) {
 				return v.length > 0;
+			})
+			.map(function (line) {
+				// Each line is "tag<TAB>true|false"; older cached files may hold
+				// a bare tag, which we treat as a stable (non-prerelease) build.
+				var parts = line.split('\t');
+				return { tag: parts[0], prerelease: parts[1] === 'true' };
 			});
 		message.respond({ returnValue: true, versions: versions });
 	});

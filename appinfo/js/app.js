@@ -291,6 +291,13 @@
 		});
 	}
 
+	// The service returns either objects ({tag, prerelease}) or, from an older
+	// cache, bare tag strings. Normalise both so the picker code is uniform.
+	function normalizeVersion(v) {
+		if (typeof v === 'string') return { tag: v, prerelease: false };
+		return { tag: v.tag, prerelease: !!v.prerelease };
+	}
+
 	function renderVersions(versions) {
 		var list = $('vlist');
 		list.innerHTML = '';
@@ -298,18 +305,36 @@
 			list.textContent = 'No versions available — check your network and try again.';
 			return;
 		}
+		// "Latest" belongs to the newest STABLE (non-prerelease) release, matching
+		// GitHub's own "Latest" label — not simply the first entry, which may be a
+		// pre-release.
+		var latestStableTag = null;
+		for (var k = 0; k < versions.length; k++) {
+			var vk = normalizeVersion(versions[k]);
+			if (!vk.prerelease) {
+				latestStableTag = vk.tag;
+				break;
+			}
+		}
 		for (var i = 0; i < versions.length; i++) {
-			(function (tag, idx) {
+			(function (v) {
+				var tag = v.tag;
 				var isCurrent = tag === currentVersion;
 				var b = document.createElement('button');
 				b.className = 'vitem' + (isCurrent ? ' current' : '');
-				var note = isCurrent ? 'installed' : idx === 0 ? 'latest' : '';
-				b.innerHTML = escapeHtml(tag) + (note ? '<span class="tag-note">' + note + '</span>' : '');
+				var chips = '';
+				if (isCurrent) chips += '<span class="chip-note installed">installed</span>';
+				if (v.prerelease) {
+					chips += '<span class="chip-note pre">pre-release</span>';
+				} else if (tag === latestStableTag) {
+					chips += '<span class="chip-note latest">latest</span>';
+				}
+				b.innerHTML = escapeHtml(tag) + (chips ? '<span class="tag-notes">' + chips + '</span>' : '');
 				b.onclick = function () {
 					chooseVersion(tag);
 				};
 				list.appendChild(b);
-			})(versions[i], i);
+			})(normalizeVersion(versions[i]));
 		}
 		var items = pickerItems();
 		if (items.length) items[0].focus();
