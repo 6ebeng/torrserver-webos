@@ -20,6 +20,9 @@ API_URL="https://api.github.com/repos/$REPO/releases/latest"
 UA="torrserver-webos"
 AUTOSTART_SRC="$SCRIPT_DIR/torrserver-autostart"
 AUTOSTART_DST="/var/lib/webosbrew/init.d/torrserver"
+# App icon shown on toast notifications. The service lives in .../services/<id>
+# while the icon ships in the sibling .../applications/com.torrserver.app dir.
+APP_ICON="${SCRIPT_DIR%/services/*}/applications/com.torrserver.app/icon.png"
 
 # --------------------------------------------------------------------------
 # Pick a data directory that is both writable and allows execution. Falls back
@@ -272,7 +275,7 @@ EOF
             fi
             ver=$(cat "$VERFILE" 2>/dev/null)
             luna-send -n 1 -f luna://com.webos.notification/createToast \
-                "{\"message\":\"TorrServer ${ver:-} is now running\"}" >/dev/null 2>&1
+                "{\"message\":\"TorrServer ${ver:-} is now running\",\"iconUrl\":\"$APP_ICON\"}" >/dev/null 2>&1
             return 0
         fi
         i=$((i + 1))
