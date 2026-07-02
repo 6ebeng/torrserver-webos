@@ -88,24 +88,6 @@
 		});
 	}
 
-	function setBadge(running, state) {
-		var b = $('badge');
-		state = state || '';
-		if (running) {
-			b.textContent = 'Running';
-			b.className = 'badge running';
-		} else if (state.indexOf('error') === 0) {
-			b.textContent = 'Error';
-			b.className = 'badge error';
-		} else if (state === 'downloading' || state === 'starting') {
-			b.textContent = state.charAt(0).toUpperCase() + state.slice(1) + '…';
-			b.className = 'badge busy';
-		} else {
-			b.textContent = 'Stopped';
-			b.className = 'badge stopped';
-		}
-	}
-
 	function fmtMB(b) {
 		var mb = b / 1048576;
 		return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + ' MB';
@@ -197,7 +179,6 @@
 	function render(s) {
 		s = s || {};
 		lastStatus = s;
-		setBadge(s.running, s.state);
 
 		var st0 = s.state || (s.running ? 'running' : 'stopped');
 		var dl = +s.downloadedBytes || 0;
@@ -219,10 +200,23 @@
 			stateText = 'Stopping…';
 		} else if (st0 === 'restarting') {
 			stateText = 'Restarting…';
+		} else if (st0 === 'running') {
+			stateText = 'Running';
+		} else if (st0 === 'stopped') {
+			stateText = 'Stopped';
 		} else {
 			stateText = st0;
 		}
 		$('state').textContent = stateText;
+		// Colour the Status value as a chip for the two stable states only; every
+		// transitional/error state stays as plain text.
+		if (st0 === 'running') {
+			$('state').className = 'v statuschip running';
+		} else if (st0 === 'stopped') {
+			$('state').className = 'v statuschip stopped';
+		} else {
+			$('state').className = 'v';
+		}
 		$('version').textContent = s.version || '—';
 		// When the installed version actually changes (an update or a manual
 		// version pick just finished), re-check upstream right away so the
@@ -271,10 +265,15 @@
 		// Drive all action buttons (enabled/disabled + loading pulse) from status.
 		updateButtons(s);
 
-		if (s.state && s.state.indexOf('error') === 0) {
-			msg('Failed: ' + s.state + ' — open <b>Logs</b> for details, then press <b>Start</b> to retry.');
-		} else if (s.running) {
-			msg('Running. Manage TorrServer from any device at the Access URL above.');
+		// Footer shows a helpful tip based on the current status only. Transitional
+		// states (starting/stopping/downloading…) keep whatever action message the
+		// button press set, so progress feedback is not overwritten by a tip.
+		if (st0.indexOf('error') === 0) {
+			msg('Tip: open <b>Logs</b> to see what went wrong, then press <b>Start</b> to try again.');
+		} else if (st0 === 'running') {
+			msg('Tip: press <b>Open Web UI</b>, or manage TorrServer from any device at the Access URL above.');
+		} else if (st0 === 'stopped') {
+			msg('Tip: press <b>Start</b> to launch TorrServer. The first launch downloads it automatically (~70 MB).');
 		}
 	}
 
@@ -306,7 +305,7 @@
 				// message after several consecutive failures.
 				statusFailCount++;
 				if (statusFailCount >= 3) {
-					setBadge(false, 'error');
+					$('state').className = 'v';
 					$('state').textContent = 'service not responding';
 					msg('Cannot reach the TorrServer service. Reopen the app; if it persists, reinstall from Homebrew Channel.');
 				}
@@ -665,28 +664,38 @@
 		);
 	}
 
-	// Probe root once at startup: checkRoot succeeds only on a rooted TV with the
-	// Homebrew Channel. If rooted, read the current boot-hook state so the button
-	// reflects reality; otherwise mark the TV as not rooted (button greys out).
+	// Probe root once at startup. Autostart is managed by running the boot-hook
+	// copy as root through the Homebrew Channel's `exec`, so the capability that
+	// actually matters is "can we run a root command via hbchannel". We test that
+	// directly by execing `id -u` and checking for uid 0. This is more reliable
+	// than `checkRoot`, whose response shape varies across webOS versions (e.g.
+	// webOS 4 returns {returnValue:true} with no `rooted` field), which is why
+	// autostart wrongly showed as unavailable on rooted webOS 4 TVs.
 	function probeRoot() {
-		svc(
-			'checkRoot',
-			{},
-			function (res) {
-				if (res && res.rooted === false) {
+		hbExec(
+			'id -u',
+			function (out) {
+				if (out && out.replace(/\s+/g, '') === '0') {
+					hbRooted = true;
+					refreshHook();
+				} else {
 					hbRooted = false;
 					notRooted = true;
-					return;
 				}
-				hbRooted = true;
-				refreshHook();
 			},
 			function () {
 				hbRooted = false;
 				notRooted = true;
 			},
-			HBCHANNEL,
 		);
+	}
+
+	// Fill the header with the TV firmware and webOS version once at startup.
+	function loadDeviceInfo() {
+		svc('getDeviceInfo', {}, function (r) {
+			if (r && r.firmwareVersion) $('fwver').textContent = 'Firmware version: ' + r.firmwareVersion;
+			if (r && r.webosVersion) $('osver').textContent = 'webOS version: ' + r.webosVersion;
+		});
 	}
 
 	// Find the installed Lampa app (its id differs between builds, e.g. lampa.tv
@@ -828,6 +837,7 @@
 		checkUpdate();
 		probeRoot();
 		probeLampa();
+		loadDeviceInfo();
 		updateTimer = setInterval(checkUpdate, 30 * 60 * 1000);
 
 		var xhr = new XMLHttpRequest();

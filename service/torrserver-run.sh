@@ -290,7 +290,11 @@ do_install() {
 
     [ -n "$ver" ] && echo "$ver" >"$VERFILE"
     echo "$arch" >"$ARCHFILE"
-    rm -f "$json" 2>/dev/null
+    # Free space now that the binary is installed. TorrServer ships as a single
+    # self-contained ELF (there is no archive to extract), so the only leftovers
+    # are the download scratch files: the partial download, the progress-size
+    # marker and the GitHub release metadata. Drop them all.
+    rm -f "$json" "$PART" "$TOTALFILE" "$DATA_DIR"/release*.json "$DATA_DIR"/*.part 2>/dev/null
     [ "${TS_QUIET:-}" = 1 ] || set_state "stopped"
     return 0
 }

@@ -25,16 +25,26 @@ header {
 header .logo { width: 64px; height: 64px; border-radius: 12px; margin-right: 24px; }
 header h1 { font-size: 44px; font-weight: 700; letter-spacing: 0.5px; }
 
-.badge {
+/* Firmware / webOS version, shown top-right in the header. */
+.devinfo {
   margin-left: auto;
-  font-size: 24px;
-  padding: 8px 22px;
-  border-radius: 999px;
+  text-align: right;
+  font-size: 22px;
+  line-height: 1.4;
+  color: #8ca397;
 }
-.badge.running { background: #1f7a3d; color: #d6ffe2; }
-.badge.stopped { background: #3a423d; color: #c7d6cd; }
-.badge.busy    { background: #8a6d1f; color: #fff3d6; }
-.badge.error   { background: #8a2727; color: #ffd6d6; }
+.devinfo span { display: block; }
+
+/* Coloured pill applied to the Status row value, but only for the two stable
+   states (running / stopped). Transitional states stay as plain text. */
+.statuschip {
+  display: inline-block;
+  padding: 4px 18px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.statuschip.running { background: #1f7a3d; color: #d6ffe2; }
+.statuschip.stopped { background: #3a423d; color: #c7d6cd; }
 
 main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 /* Vertical spacing between sections (flexbox `gap` is unsupported on old webOS). */
