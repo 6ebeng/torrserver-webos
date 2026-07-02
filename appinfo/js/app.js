@@ -15,9 +15,15 @@
 	var logsVisible = false;
 	var autostartOn = true;
 	var autostartAvailable = true;
+	var pickerOpen = false;
+	var currentVersion = '';
 
 	function msg(text) {
 		$('msg').innerHTML = text || '';
+	}
+
+	function escapeHtml(s) {
+		return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	}
 
 	function svc(method, params, ok, fail, overrideService) {
@@ -78,6 +84,7 @@
 		}
 		$('state').textContent = stateText;
 		$('version').textContent = s.version || '—';
+		currentVersion = s.version || '';
 		$('arch').textContent = s.arch || '—';
 		$('datadir').textContent = s.dataDir || '—';
 		// Autostart status. It can only be toggled when the service runs elevated
@@ -223,6 +230,77 @@
 		}
 	}
 
+	// The currently focusable controls inside the open version picker (the list
+	// of release buttons plus Cancel), used for D-pad up/down navigation.
+	function pickerItems() {
+		return Array.prototype.slice.call($('vpicker').getElementsByTagName('button')).filter(function (b) {
+			return b.offsetParent !== null;
+		});
+	}
+
+	function renderVersions(versions) {
+		var list = $('vlist');
+		list.innerHTML = '';
+		if (!versions.length) {
+			list.textContent = 'No versions available — check your network and try again.';
+			return;
+		}
+		for (var i = 0; i < versions.length; i++) {
+			(function (tag, idx) {
+				var isCurrent = tag === currentVersion;
+				var b = document.createElement('button');
+				b.className = 'vitem' + (isCurrent ? ' current' : '');
+				var note = isCurrent ? 'installed' : idx === 0 ? 'latest' : '';
+				b.innerHTML = escapeHtml(tag) + (note ? '<span class="tag-note">' + note + '</span>' : '');
+				b.onclick = function () {
+					chooseVersion(tag);
+				};
+				list.appendChild(b);
+			})(versions[i], i);
+		}
+		var items = pickerItems();
+		if (items.length) items[0].focus();
+	}
+
+	function openVersionPicker() {
+		pickerOpen = true;
+		$('vpicker').className = 'overlay';
+		$('vlist').textContent = 'Loading…';
+		$('btnVCancel').focus();
+		svc(
+			'listVersions',
+			{},
+			function (r) {
+				if (!pickerOpen) return;
+				renderVersions((r && r.versions) || []);
+			},
+			function () {
+				$('vlist').textContent = 'Could not load versions — check your network and try again.';
+			},
+		);
+	}
+
+	function closeVersionPicker() {
+		pickerOpen = false;
+		$('vpicker').className = 'overlay hidden';
+		var btns = visibleButtons();
+		var sel = $('btnSelectVersion');
+		if (sel && btns.indexOf(sel) !== -1) sel.focus();
+		else if (btns.length) btns[0].focus();
+	}
+
+	function chooseVersion(tag) {
+		if (tag === currentVersion) {
+			msg('TorrServer <b>' + escapeHtml(tag) + '</b> is already installed.');
+			closeVersionPicker();
+			return;
+		}
+		msg('Installing TorrServer <b>' + escapeHtml(tag) + '</b>… this can take a minute.');
+		svc('selectVersion', { version: tag }, poll);
+		closeVersionPicker();
+		setTimeout(checkUpdate, 60000);
+	}
+
 	function wire() {
 		$('btnStart').onclick = function () {
 			msg('Starting… first launch downloads TorrServer (~70&nbsp;MB), this can take a minute.');
@@ -241,6 +319,8 @@
 			svc('update', {}, poll);
 			setTimeout(checkUpdate, 60000);
 		};
+		$('btnSelectVersion').onclick = openVersionPicker;
+		$('btnVCancel').onclick = closeVersionPicker;
 		$('btnAutostart').onclick = function () {
 			if (!autostartAvailable) {
 				msg('Autostart requires a rooted TV with the Homebrew Channel.');
@@ -287,6 +367,24 @@
 
 		document.addEventListener('keydown', function (e) {
 			var k = e.keyCode;
+			// While the version picker is open it captures navigation: up/down moves
+			// through the release list, Back/Escape closes it.
+			if (pickerOpen) {
+				if (k === 38 || k === 40) {
+					var items = pickerItems();
+					if (!items.length) return;
+					var pi = items.indexOf(document.activeElement);
+					if (pi < 0) pi = 0;
+					if (k === 38) pi = (pi + items.length - 1) % items.length;
+					else pi = (pi + 1) % items.length;
+					items[pi].focus();
+					e.preventDefault();
+				} else if (k === 461 || k === 27 || k === 8) {
+					closeVersionPicker();
+					e.preventDefault();
+				}
+				return;
+			}
 			if (k === 37 || k === 39) {
 				var btns = visibleButtons();
 				if (!btns.length) return;

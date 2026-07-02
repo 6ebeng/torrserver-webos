@@ -19,7 +19,7 @@
         <main>
             <section class="card">
                 <div class="row"><span class="k">Status</span><span id="state" class="v">checking&hellip;</span></div>
-                <div class="row"><span class="k">App Version</span><span id="appversion" class="v">1.0.9</span></div>
+                <div class="row"><span class="k">App Version</span><span id="appversion" class="v">1.1.0</span></div>
                 <div class="row"><span class="k">Server Version</span><span class="v"><span id="version">&mdash;</span>
                         <span id="updatebadge" class="pill hidden">Update available</span></span></div>
                 <div class="row"><span class="k">Architecture</span><span id="arch" class="v">&mdash;</span></div>
@@ -33,6 +33,7 @@
                 <button id="btnStop" class="btn">Stop</button>
                 <button id="btnRestart" class="btn">Restart</button>
                 <button id="btnUpdate" class="btn">Update server</button>
+                <button id="btnSelectVersion" class="btn">Select version</button>
                 <button id="btnAutostart" class="btn">Autostart: On</button>
                 <button id="btnOpen" class="btn">Open Web UI</button>
                 <button id="btnLampa" class="btn hidden">Lampa</button>
@@ -49,6 +50,17 @@
             <span id="msg">Press <b>Start</b>. On first launch TorrServer is downloaded automatically.</span>
             <span id="credit">Coded by Tishko Rasoul &middot; github.com/6ebeng/torrserver-webos</span>
         </footer>
+    </div>
+
+    <div id="vpicker" class="overlay hidden">
+        <div class="dialog">
+            <div class="dialog-title">Select TorrServer version</div>
+            <div class="dialog-sub">Pick a release to install. Use this to downgrade if the latest build has issues.</div>
+            <div id="vlist" class="vlist">Loading&hellip;</div>
+            <div class="dialog-actions">
+                <button id="btnVCancel" class="btn">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <script src="js/luna-bridge.js"></script>

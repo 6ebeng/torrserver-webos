@@ -62,14 +62,14 @@ main > *:last-child { margin-bottom: 0; }
 /* Old webOS (Chromium ~38) ignores flexbox `gap`, so buttons would touch.
    Use margins instead, which work on every webOS version. The negative
    container margin keeps the row edges flush with the rest of the layout. */
-.actions { display: flex; flex-wrap: wrap; margin: -10px; }
+.actions { display: flex; flex-wrap: wrap; margin: -7px; }
 
 .btn {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 600;
-  margin: 10px;
-  padding: 20px 42px;
-  border-radius: 14px;
+  margin: 7px;
+  padding: 14px 24px;
+  border-radius: 12px;
   border: 3px solid transparent;
   background: #26342c;
   color: #e8f3ec;
@@ -102,3 +102,48 @@ footer b { color: #cdded4; }
 
 .pill { font-size: 18px; padding: 4px 14px; border-radius: 999px; background: #3fb57a; color: #052314; font-weight: 700; vertical-align: middle; }
 .btn.attention { background: #3fb57a; color: #052314; font-weight: 700; box-shadow: 0 0 0 3px rgba(63, 181, 122, 0.5); }
+
+/* Modal version picker overlay (manual downgrade / version select). */
+.overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.dialog {
+  width: 720px;
+  max-width: 86%;
+  max-height: 80%;
+  display: flex;
+  flex-direction: column;
+  background: #16201b;
+  border: 1px solid #26342c;
+  border-radius: 18px;
+  padding: 32px;
+}
+.dialog-title { font-size: 34px; font-weight: 700; margin-bottom: 8px; }
+.dialog-sub { font-size: 22px; color: #8ca397; margin-bottom: 24px; }
+.vlist { flex: 1; overflow-y: auto; min-height: 0; margin-bottom: 24px; }
+.vitem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 26px;
+  font-weight: 600;
+  padding: 16px 22px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  border: 3px solid transparent;
+  background: #26342c;
+  color: #e8f3ec;
+  cursor: pointer;
+  outline: none;
+}
+.vitem:last-child { margin-bottom: 0; }
+.vitem.current { background: #1f7a3d; color: #d6ffe2; }
+.vitem:focus { border-color: #3fb57a; transform: scale(1.02); }
+.vitem .tag-note { float: right; font-size: 20px; color: #8ca397; font-weight: 600; }
+.dialog-actions { display: flex; justify-content: flex-end; }

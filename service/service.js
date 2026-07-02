@@ -144,6 +144,36 @@ service.register('checkUpdate', function (message) {
 	});
 });
 
+// List the TorrServer release tags available upstream (newest first) so the UI
+// can offer a manual version picker for downgrades / compatibility fixes.
+service.register('listVersions', function (message) {
+	runScript(['versions'], 30000, function (err, stdout) {
+		var versions = String(stdout || '')
+			.split('\n')
+			.map(function (v) {
+				return v.replace(/^\s+|\s+$/g, '');
+			})
+			.filter(function (v) {
+				return v.length > 0;
+			});
+		message.respond({ returnValue: true, versions: versions });
+	});
+});
+
+// Install a specific TorrServer release (manual downgrade / version pin). The
+// control script self-backgrounds the download+restart, so we ack immediately
+// and the front-end follows progress by polling "status".
+service.register('selectVersion', function (message) {
+	var version = (message.payload && message.payload.version) || '';
+	if (!version) {
+		message.respond({ returnValue: false, errorText: 'version is required' });
+		return;
+	}
+	runScript(['select-version', String(version)], 15000, function () {
+		message.respond({ returnValue: true, selecting: true, version: String(version) });
+	});
+});
+
 // Called by the autostart hook (luna://.../autostart) at boot.
 registerAsyncAction('autostart', 'start', 'started');
 

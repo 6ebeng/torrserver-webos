@@ -1,6 +1,6 @@
 {
 	"name": "com.torrserver.app.service",
-	"version": "1.0.9",
+	"version": "1.1.0",
 	"description": "TorrServer control service for webOS",
 	"main": "service.js",
 	"private": true,

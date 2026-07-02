@@ -3,7 +3,8 @@
 # TorrServer control script for webOS (POSIX sh / busybox compatible).
 #
 # Subcommands: install | start | stop | restart | update | status | logs |
-#              datadir | latest | enable-autostart | disable-autostart
+#              datadir | latest | versions | select-version | enable-autostart |
+#              disable-autostart
 #
 # It auto-detects a writable + exec-capable data directory, downloads the
 # matching self-contained TorrServer build (a single static Go binary) from
@@ -17,6 +18,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
 PORT=8090
 REPO="YouROK/TorrServer"
 API_URL="https://api.github.com/repos/$REPO/releases/latest"
+RELEASES_URL="https://api.github.com/repos/$REPO/releases?per_page=100"
 UA="torrserver-webos"
 AUTOSTART_SRC="$SCRIPT_DIR/torrserver-autostart"
 AUTOSTART_DST="/var/lib/webosbrew/init.d/torrserver"
@@ -67,6 +69,8 @@ PART="$DATA_DIR/torrserver.part"
 TOTALFILE="$DATA_DIR/total"
 ARCHFILE="$DATA_DIR/arch"
 LATESTFILE="$DATA_DIR/latest"
+VERSIONSFILE="$DATA_DIR/versions"
+WANTVERFILE="$DATA_DIR/.want_version"
 AUTOSTART_INIT="$DATA_DIR/.autostart_init"
 mkdir -p "$DATA_DIR" "$APP_DIR" "$DATA_SUB" "$DATA_DIR/tmp" 2>/dev/null
 
@@ -168,6 +172,27 @@ do_latest() {
     cat "$LATESTFILE" 2>/dev/null
 }
 
+# List the available release tags from GitHub (newest first), one per line, so
+# the UI can offer a manual version picker for downgrades / compatibility fixes.
+# Cached for an hour to keep repeated opens of the picker cheap.
+do_versions() {
+    if [ -f "$VERSIONSFILE" ]; then
+        _age=$(( $(date +%s) - $(date -r "$VERSIONSFILE" +%s 2>/dev/null || echo 0) ))
+        if [ "$_age" -lt 3600 ]; then cat "$VERSIONSFILE"; return 0; fi
+    fi
+    _j="$DATA_DIR/releases.json"
+    if download "$RELEASES_URL" "$_j"; then
+        _tags=$(grep -o '"tag_name"[ ]*:[ ]*"[^"]*"' "$_j" | sed 's/.*"\([^"]*\)"$/\1/')
+        rm -f "$_j" 2>/dev/null
+        if [ -n "$_tags" ]; then
+            printf '%s\n' "$_tags" >"$VERSIONSFILE"
+            cat "$VERSIONSFILE"
+            return 0
+        fi
+    fi
+    cat "$VERSIONSFILE" 2>/dev/null
+}
+
 # Is TorrServer alive?  We deliberately avoid "pgrep -f <binary path>": the path
 # is part of pgrep's own argv, so when the UI polls status every 2s two pgrep
 # runs match EACH OTHER's command line and report a false positive. That made
@@ -191,24 +216,36 @@ is_running() {
     return 1
 }
 
+# do_install [version]  -> installs the latest release, or a specific release tag
+# when a version is given (manual downgrade / compatibility pick).
 do_install() {
     arch=$(detect_arch)
     asset="TorrServer-linux-$arch"
+    _want="${1:-}"
     set_state "downloading"
     json="$DATA_DIR/release.json"
     rm -f "$PART" "$TOTALFILE" 2>/dev/null
-    if ! download "$API_URL" "$json"; then set_state "error:api"; return 1; fi
 
-    # The release JSON is minified. Each asset object lists "name" first and the
-    # matching "browser_download_url" last, with "size" in between - so anchor on
-    # the download URL and take the last "size" before it for this exact asset.
-    url=$(grep -o '"browser_download_url":"[^"]*/'"$asset"'"' "$json" | head -n1 | sed 's/.*:"//; s/"$//')
-    ver=$(grep -o '"tag_name"[ ]*:[ ]*"[^"]*"' "$json" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
-    if [ -z "$url" ]; then set_state "error:asset"; return 1; fi
+    if [ -n "$_want" ]; then
+        # Manual version pick: the release asset URL is predictable, so download
+        # the requested tag straight from the releases download endpoint without
+        # hitting (and being rate-limited by) the GitHub API.
+        url="https://github.com/$REPO/releases/download/$_want/$asset"
+        ver="$_want"
+    else
+        if ! download "$API_URL" "$json"; then set_state "error:api"; return 1; fi
 
-    prefix=$(grep -o '.*"browser_download_url":"[^"]*/'"$asset"'"' "$json" 2>/dev/null)
-    total=$(printf '%s' "$prefix" | grep -o '"size"[ ]*:[ ]*[0-9][0-9]*' | tail -n1 | grep -o '[0-9][0-9]*' | tail -n1)
-    [ -n "$total" ] && echo "$total" >"$TOTALFILE"
+        # The release JSON is minified. Each asset object lists "name" first and
+        # the matching "browser_download_url" last, with "size" in between - so
+        # anchor on the download URL and take the last "size" before it.
+        url=$(grep -o '"browser_download_url":"[^"]*/'"$asset"'"' "$json" | head -n1 | sed 's/.*:"//; s/"$//')
+        ver=$(grep -o '"tag_name"[ ]*:[ ]*"[^"]*"' "$json" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
+        if [ -z "$url" ]; then set_state "error:asset"; return 1; fi
+
+        prefix=$(grep -o '.*"browser_download_url":"[^"]*/'"$asset"'"' "$json" 2>/dev/null)
+        total=$(printf '%s' "$prefix" | grep -o '"size"[ ]*:[ ]*[0-9][0-9]*' | tail -n1 | grep -o '[0-9][0-9]*' | tail -n1)
+        [ -n "$total" ] && echo "$total" >"$TOTALFILE"
+    fi
 
     # Download to a .part file so do_status can report live byte progress.
     if ! download "$url" "$PART"; then set_state "error:download"; return 1; fi
@@ -356,11 +393,14 @@ case "${1:-}" in
     logs)     tail -n "${2:-200}" "$LOG" 2>/dev/null ;;
     datadir)  echo "$DATA_DIR" ;;
     latest)   do_latest ;;
+    versions) do_versions ;;
+    select-version) echo "${2:-}" >"$WANTVERFILE" 2>/dev/null; spawn_bg _install_version ;;
     enable-autostart)  enable_autostart && echo "enabled" || echo "failed"; : >"$AUTOSTART_INIT" 2>/dev/null ;;
     disable-autostart) disable_autostart && echo "disabled" || echo "failed"; : >"$AUTOSTART_INIT" 2>/dev/null ;;
     _start)   do_start ;;
     _install) do_install ;;
     _restart) do_stop; do_start ;;
     _update)  do_stop; do_install && do_start ;;
-    *) echo "usage: $0 {install|start|stop|restart|update|status|logs|datadir|latest|enable-autostart|disable-autostart}"; exit 1 ;;
+    _install_version) do_stop; do_install "$(cat "$WANTVERFILE" 2>/dev/null)" && do_start ;;
+    *) echo "usage: $0 {install|start|stop|restart|update|status|logs|datadir|latest|versions|select-version|enable-autostart|disable-autostart}"; exit 1 ;;
 esac
