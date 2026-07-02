@@ -14,6 +14,7 @@
 	var firstUrl = null;
 	var logsVisible = false;
 	var autostartOn = true;
+	var autostartAvailable = true;
 
 	function msg(text) {
 		$('msg').innerHTML = text || '';
@@ -79,10 +80,23 @@
 		$('version').textContent = s.version || '—';
 		$('arch').textContent = s.arch || '—';
 		$('datadir').textContent = s.dataDir || '—';
-		// Autostart status
+		// Autostart status. It can only be toggled when the service runs elevated
+		// (rooted/Homebrew TV); otherwise the button is greyed out and skipped by
+		// D-pad navigation because the boot hook cannot be written.
 		autostartOn = !!s.autostart;
-		$('autostart').textContent = autostartOn ? 'Enabled' : 'Disabled';
-		$('btnAutostart').textContent = 'Autostart: ' + (autostartOn ? 'On' : 'Off');
+		autostartAvailable = s.autostartAvailable !== false;
+		var btnA = $('btnAutostart');
+		if (autostartAvailable) {
+			$('autostart').textContent = autostartOn ? 'Enabled' : 'Disabled';
+			btnA.textContent = 'Autostart: ' + (autostartOn ? 'On' : 'Off');
+			btnA.disabled = false;
+			btnA.className = 'btn';
+		} else {
+			$('autostart').textContent = 'Unavailable (TV not rooted)';
+			btnA.textContent = 'Autostart: N/A';
+			btnA.disabled = true;
+			btnA.className = 'btn disabled';
+		}
 		// Show the Lampa shortcut only when the Lampa app is installed.
 		$('btnLampa').className = 'btn' + (s.lampaInstalled ? '' : ' hidden');
 		var urls = s.accessUrls || [];
@@ -228,6 +242,10 @@
 			setTimeout(checkUpdate, 60000);
 		};
 		$('btnAutostart').onclick = function () {
+			if (!autostartAvailable) {
+				msg('Autostart requires a rooted TV with the Homebrew Channel.');
+				return;
+			}
 			if (autostartOn) {
 				msg('Disabling autostart…');
 				svc('disableAutostart', {}, poll);
@@ -254,11 +272,12 @@
 		};
 	}
 
-	// D-pad navigation across the currently visible buttons only (the Lampa
-	// shortcut is hidden until the Lampa app is detected).
+	// D-pad navigation across the currently visible, enabled buttons only (the
+	// Lampa shortcut is hidden until Lampa is detected, and the Autostart button
+	// is disabled/greyed on non-rooted TVs).
 	function visibleButtons() {
 		return Array.prototype.slice.call(document.querySelectorAll('.btn')).filter(function (b) {
-			return b.offsetParent !== null;
+			return b.offsetParent !== null && !b.disabled;
 		});
 	}
 

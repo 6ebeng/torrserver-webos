@@ -79,6 +79,18 @@ set_state() { echo "$1" >"$STATEFILE" 2>/dev/null; }
 # check/copy/remove is all that is needed here.
 autostart_enabled() { [ -f "$AUTOSTART_DST" ]; }
 
+# Whether autostart can actually be toggled on this TV. It only works when the
+# service runs elevated (root, un-jailed) on a rooted/Homebrew TV, so that it
+# can write the boot hook. A jailed service (uid != 0) or a TV without the
+# webosbrew init.d directory cannot persist the hook, so the UI greys the
+# Autostart button out in that case.
+autostart_available() {
+    [ "$(id -u 2>/dev/null)" = "0" ] || return 1
+    _ad=$(dirname "$AUTOSTART_DST")
+    [ -d "$_ad" ] || mkdir -p "$_ad" 2>/dev/null || return 1
+    [ -w "$_ad" ]
+}
+
 enable_autostart() {
     mkdir -p "$(dirname "$AUTOSTART_DST")" 2>/dev/null
     if [ -f "$AUTOSTART_SRC" ]; then
@@ -329,8 +341,9 @@ do_status() {
     [ -z "$tot" ] && tot=0
 
     if autostart_enabled; then as=true; else as=false; fi
-    printf '{"running":%s,"installed":%s,"state":"%s","version":"%s","arch":"%s","port":%s,"downloadedBytes":%s,"totalBytes":%s,"dataDir":"%s","autostart":%s}\n' \
-        "$r" "$ins" "$st" "$ver" "$arch" "$PORT" "$dlb" "$tot" "$DATA_DIR" "$as"
+    if autostart_available; then aa=true; else aa=false; fi
+    printf '{"running":%s,"installed":%s,"state":"%s","version":"%s","arch":"%s","port":%s,"downloadedBytes":%s,"totalBytes":%s,"dataDir":"%s","autostart":%s,"autostartAvailable":%s}\n' \
+        "$r" "$ins" "$st" "$ver" "$arch" "$PORT" "$dlb" "$tot" "$DATA_DIR" "$as" "$aa"
 }
 
 case "${1:-}" in

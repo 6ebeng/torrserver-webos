@@ -80,6 +80,9 @@ main > *:last-child { margin-bottom: 0; }
 .btn.primary { background: #3fb57a; color: #052314; font-weight: 700; }
 .btn:focus { border-color: #3fb57a; transform: scale(1.05); }
 .btn.primary:focus { border-color: #ffffff; }
+/* Greyed-out, non-interactive button (e.g. Autostart on a non-rooted TV). */
+.btn:disabled, .btn.disabled { background: #1c2621; color: #5c6c63; cursor: default; }
+.btn:disabled:focus, .btn.disabled:focus { border-color: transparent; transform: none; }
 
 #logwrap { flex: 1; overflow: auto; min-height: 0; padding: 18px; }
 #logs {
