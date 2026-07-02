@@ -164,15 +164,28 @@
 		});
 	}
 
+	var statusFailCount = 0;
+
 	function poll() {
 		svc(
 			'status',
 			{},
 			function (s) {
+				statusFailCount = 0;
 				render(s);
 				if (logsVisible) refreshLogsLive();
 			},
-			function () {},
+			function () {
+				// Never leave the UI silently stuck on "checking…". Transient
+				// failures happen while the service respawns, so only surface a
+				// message after several consecutive failures.
+				statusFailCount++;
+				if (statusFailCount >= 3) {
+					setBadge(false, 'error');
+					$('state').textContent = 'service not responding';
+					msg('Cannot reach the TorrServer service. Reopen the app; if it persists, reinstall from Homebrew Channel.');
+				}
+			},
 		);
 	}
 
