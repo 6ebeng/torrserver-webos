@@ -24,16 +24,18 @@ powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Autostart  # also e
 1. Launch **TorrServer** on the TV and press **Start** (first launch downloads ~70 MB).
 2. Manage from any device at `http://<tv-ip>:8090`.
 
-Buttons: Start / Stop / Restart / Update / Autostart / Open Web UI / Lampa / MediaPlayer / Logs.
+Buttons: Start / Stop / Restart / Update / Select version / Autostart / Open Web UI / Lampa / MediaPlayer / Logs.
 
-The **Lampa** shortcut appears only when the Lampa app (`com.lampa.tv`) is installed. **MediaPlayer** opens the TV's built-in media player (Photo/Video on webOS &lt; 6, MediaPlayer on webOS 6+).
+The header shows the TV's **Firmware version** and **webOS version**. The **Status** row is a coloured chip (green when running, grey when stopped), and the footer shows a context tip for the current state.
+
+The **Lampa** shortcut appears only when the Lampa app (`com.lampa.tv`) is installed. **MediaPlayer** opens the TV's built-in media player (Photo/Video on webOS &lt; 6, MediaPlayer on webOS 6+). **Open Web UI** launches the TV browser at the TorrServer address.
 
 ## Notes
 
-- Autostart is **on by default** — TorrServer launches at boot after the first successful start. Toggle it anytime with the in-app **Autostart** button (your choice is then remembered).
+- Autostart is **on by default** — TorrServer launches at boot after the first successful start. Toggle it anytime with the in-app **Autostart** button (your choice is then remembered). Root is detected through the Homebrew Channel, so it works on rooted TVs across webOS versions (including webOS 4.x).
 - TorrServer binds all interfaces on port `8090` — keep it on a trusted LAN.
 - The matching CPU architecture (`amd64`, `386`, `arm5`, `arm7`, `arm64`) is detected and downloaded at runtime, so the `.ipk` stays small and always tracks the latest release.
-- Data is stored in the first writable + exec-capable path among `/media/developer/torrserver`, `/home/root/torrserver`, `/media/internal/.torrserver`, `/tmp/torrserver`.
+- Data is stored in the first writable + exec-capable path among `/media/developer/torrserver`, `/home/root/torrserver`, `/media/internal/.torrserver`, `/tmp/torrserver`. Download scratch files are removed after each install to save space.
 
 ## Layout
 
