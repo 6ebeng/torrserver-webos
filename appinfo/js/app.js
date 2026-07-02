@@ -48,6 +48,9 @@
 	// bare luna-send) is rejected as "invalid parameters" on webOS 9.
 	var APPMGR = 'com.webos.applicationManager';
 	var LAMPA_FALLBACK_ID = 'com.lampa.tv';
+	// The system web browser. Launching it with a "target" URL opens the page in
+	// the real browser instead of navigating our own app webview away.
+	var BROWSER_ID = 'com.webos.app.browser';
 	var HOOK = '/var/lib/webosbrew/init.d/torrserver';
 	var SVC_DIRS = '/media/developer/apps/usr/palm/services/com.torrserver.app.service /media/cryptofs/apps/usr/palm/services/com.torrserver.app.service';
 	var ENABLE_CMD =
@@ -591,11 +594,30 @@
 		};
 		$('btnOpen').onclick = function () {
 			if (isDisabled($('btnOpen'))) return;
-			if (firstUrl) {
-				window.location.href = firstUrl;
-			} else {
+			if (!firstUrl) {
 				msg('No network address yet — start the server first.');
+				return;
 			}
+			msg('Opening the web UI in the TV browser…');
+			// Launch the system browser at the TorrServer URL. A root luna-send
+			// (via the Homebrew Channel) is the most reliable path on webOS 9;
+			// fall back to a frontend launch, then finally to navigating our own
+			// webview so the page still opens on TVs where neither launch works.
+			var launchParams = { id: BROWSER_ID, params: { target: firstUrl } };
+			var inWebview = function () {
+				window.location.href = firstUrl;
+			};
+			var frontendLaunch = function () {
+				svc('launch', launchParams, function () {}, inWebview, APPMGR);
+			};
+			hbExec(
+				'luna-send -n 1 luna://com.webos.applicationManager/launch \'{"id":"' + BROWSER_ID + '","params":{"target":"' + firstUrl + '"}}\'',
+				function (out) {
+					if (/"returnValue"\s*:\s*true/.test(out)) return;
+					frontendLaunch();
+				},
+				frontendLaunch,
+			);
 		};
 	}
 
