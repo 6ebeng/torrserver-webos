@@ -15,8 +15,31 @@
 	var logsVisible = false;
 	var autostartOn = true;
 	var autostartAvailable = true;
+	var autostartBusy = false;
+	var notRooted = false;
+	var hbRooted = null; // null = not probed yet, true/false once known
+	var hookOn = false; // boot hook present (managed by us via hbchannel exec)
+	var hookKnown = false; // hookOn has been read at least once
 	var pickerOpen = false;
 	var currentVersion = '';
+
+	// Homebrew Channel service — its methods are all in the public Luna group, so a
+	// normal web app may call them. We use `exec` (runs as root) to manage the
+	// autostart boot hook directly. This works on any rooted TV whether or not our
+	// own service is elevated, and needs no reboot — unlike elevating the service.
+	var HBCHANNEL = 'org.webosbrew.hbchannel.service';
+	var HOOK = '/var/lib/webosbrew/init.d/torrserver';
+	var SVC_DIRS = '/media/developer/apps/usr/palm/services/com.torrserver.app.service /media/cryptofs/apps/usr/palm/services/com.torrserver.app.service';
+	var ENABLE_CMD =
+		'for d in ' +
+		SVC_DIRS +
+		'; do [ -f "$d/torrserver-autostart" ] && SRC="$d/torrserver-autostart"; done; mkdir -p /var/lib/webosbrew/init.d && cp "$SRC" ' +
+		HOOK +
+		' && chmod 755 ' +
+		HOOK +
+		' && echo ENABLED || echo FAIL';
+	var DISABLE_CMD = 'rm -f ' + HOOK + ' && echo DISABLED';
+	var CHECK_CMD = '[ -f ' + HOOK + ' ] && echo ON || echo OFF';
 
 	function msg(text) {
 		$('msg').innerHTML = text || '';
@@ -87,13 +110,26 @@
 		currentVersion = s.version || '';
 		$('arch').textContent = s.arch || '—';
 		$('datadir').textContent = s.dataDir || '—';
-		// Autostart status. It can only be toggled when the service runs elevated
-		// (rooted/Homebrew TV); otherwise the button is greyed out and skipped by
-		// D-pad navigation because the boot hook cannot be written.
-		autostartOn = !!s.autostart;
-		autostartAvailable = s.autostartAvailable !== false;
+		// Autostart status. On a rooted TV we manage the boot hook ourselves via
+		// the Homebrew Channel (root exec), which works whether or not our service
+		// is elevated. Fall back to the service's own view until root is probed.
 		var btnA = $('btnAutostart');
-		if (autostartAvailable) {
+		if (hbRooted === true) {
+			autostartAvailable = true;
+			autostartOn = hookKnown ? hookOn : !!s.autostart;
+		} else if (hbRooted === false || notRooted) {
+			autostartAvailable = s.autostartAvailable !== false;
+			autostartOn = !!s.autostart;
+		} else {
+			autostartAvailable = s.autostartAvailable !== false;
+			autostartOn = !!s.autostart;
+		}
+		if (autostartBusy) {
+			$('autostart').textContent = 'Working…';
+			btnA.textContent = 'Autostart: …';
+			btnA.disabled = true;
+			btnA.className = 'btn disabled';
+		} else if (autostartAvailable) {
 			$('autostart').textContent = autostartOn ? 'Enabled' : 'Disabled';
 			btnA.textContent = 'Autostart: ' + (autostartOn ? 'On' : 'Off');
 			btnA.disabled = false;
@@ -322,10 +358,19 @@
 		$('btnSelectVersion').onclick = openVersionPicker;
 		$('btnVCancel').onclick = closeVersionPicker;
 		$('btnAutostart').onclick = function () {
+			if (autostartBusy) return;
+			// On a rooted TV we manage the boot hook directly via the Homebrew
+			// Channel (root exec) — reliable regardless of service elevation.
+			if (hbRooted === true) {
+				toggleAutostart();
+				return;
+			}
 			if (!autostartAvailable) {
 				msg('Autostart requires a rooted TV with the Homebrew Channel.');
 				return;
 			}
+			// Fallback path: service is elevated but the Homebrew Channel is not
+			// reachable — let the service manage its own hook.
 			if (autostartOn) {
 				msg('Disabling autostart…');
 				svc('disableAutostart', {}, poll);
@@ -350,6 +395,97 @@
 				msg('No network address yet — start the server first.');
 			}
 		};
+	}
+
+	// Run a shell command as root through the Homebrew Channel and hand back the
+	// trimmed stdout. Used to manage the autostart boot hook on rooted TVs.
+	function hbExec(command, onOut, onErr) {
+		svc(
+			'exec',
+			{ command: command },
+			function (res) {
+				var out = (res && res.stdoutString) || '';
+				if (onOut) onOut(out.replace(/^\s+|\s+$/g, ''));
+			},
+			function (e) {
+				if (onErr) onErr(e);
+			},
+			HBCHANNEL,
+		);
+	}
+
+	// Probe root once at startup: checkRoot succeeds only on a rooted TV with the
+	// Homebrew Channel. If rooted, read the current boot-hook state so the button
+	// reflects reality; otherwise mark the TV as not rooted (button greys out).
+	function probeRoot() {
+		svc(
+			'checkRoot',
+			{},
+			function (res) {
+				if (res && res.rooted === false) {
+					hbRooted = false;
+					notRooted = true;
+					return;
+				}
+				hbRooted = true;
+				refreshHook();
+			},
+			function () {
+				hbRooted = false;
+				notRooted = true;
+			},
+			HBCHANNEL,
+		);
+	}
+
+	// Read whether the autostart boot hook is currently installed.
+	function refreshHook() {
+		hbExec(CHECK_CMD, function (out) {
+			hookOn = out.indexOf('ON') === 0;
+			hookKnown = true;
+		});
+	}
+
+	// Toggle autostart by writing/removing the boot hook as root. No service
+	// elevation or reboot required — works on both old and new webOS.
+	function toggleAutostart() {
+		if (autostartBusy) return;
+		autostartBusy = true;
+		if (autostartOn) {
+			msg('Disabling autostart…');
+			hbExec(
+				DISABLE_CMD,
+				function () {
+					hookOn = false;
+					hookKnown = true;
+					autostartBusy = false;
+					msg('Autostart disabled.');
+					poll();
+				},
+				function () {
+					autostartBusy = false;
+					msg('Could not update autostart. Please try again.');
+					poll();
+				},
+			);
+		} else {
+			msg('Enabling autostart…');
+			hbExec(
+				ENABLE_CMD,
+				function (out) {
+					hookOn = out.indexOf('ENABLED') !== -1;
+					hookKnown = true;
+					autostartBusy = false;
+					msg(hookOn ? 'Autostart enabled.' : 'Could not enable autostart — is the Homebrew Channel installed?');
+					poll();
+				},
+				function () {
+					autostartBusy = false;
+					msg('Could not update autostart. Please try again.');
+					poll();
+				},
+			);
+		}
 	}
 
 	// D-pad navigation across the currently visible, enabled buttons only (the
@@ -409,6 +545,7 @@
 		setupLifecycle();
 		startPolling();
 		checkUpdate();
+		probeRoot();
 		updateTimer = setInterval(checkUpdate, 30 * 60 * 1000);
 
 		var xhr = new XMLHttpRequest();
