@@ -136,14 +136,7 @@
 	// action buttons must stay locked/greyed until it resolves.
 	function isBusyState(st) {
 		st = st || '';
-		return (
-			st === 'starting' ||
-			st === 'stopping' ||
-			st === 'restarting' ||
-			st === 'downloading' ||
-			st === 'updating' ||
-			st === 'installing'
-		);
+		return st === 'starting' || st === 'stopping' || st === 'restarting' || st === 'downloading' || st === 'updating' || st === 'installing';
 	}
 
 	// Drive the enabled/disabled + loading state of every action button from the
@@ -712,7 +705,7 @@
 					poll();
 				}
 			},
-			function () {}
+			function () {},
 		);
 	}
 
