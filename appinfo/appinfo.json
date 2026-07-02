@@ -1,6 +1,6 @@
 {
 	"id": "com.torrserver.app",
-	"version": "1.0.4",
+	"version": "1.0.5",
 	"vendor": "Tishko Rasoul",
 	"type": "web",
 	"main": "index.html",
