@@ -438,6 +438,6 @@ case "${1:-}" in
     _install) do_install ;;
     _restart) TS_QUIET=1; set_state "restarting"; do_stop; do_start ;;
     _update)  TS_QUIET=1; set_state "updating"; do_stop; do_install && do_start ;;
-    _install_version) TS_QUIET=1; set_state "installing"; do_stop; do_install "$(cat "$WANTVERFILE" 2>/dev/null)" && do_start ;;
+    _install_version) TS_QUIET=1; set_state "downloading"; do_stop; do_install "$(cat "$WANTVERFILE" 2>/dev/null)" && do_start ;;
     *) echo "usage: $0 {install|start|stop|restart|update|status|logs|datadir|latest|versions|select-version|enable-autostart|disable-autostart}"; exit 1 ;;
 esac
