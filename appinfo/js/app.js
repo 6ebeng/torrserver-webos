@@ -264,6 +264,10 @@
 			if (avail) {
 				$('btnUpdate').textContent = 'Update to ' + r.latest;
 				msg('A new TorrServer version (<b>' + r.latest + '</b>) is available. Press <b>Update</b> to install.');
+			} else {
+				// Already on the latest release: restore the button to its normal
+				// label and style so it no longer looks like an action is pending.
+				$('btnUpdate').textContent = 'Update server';
 			}
 		});
 	}
@@ -365,6 +369,11 @@
 		};
 		$('btnUpdate').onclick = function () {
 			msg('Updating to the latest TorrServer release…');
+			// The pending update is being acted on, so drop the attention style
+			// and badge right away instead of waiting for the next checkUpdate.
+			$('btnUpdate').className = 'btn';
+			$('btnUpdate').textContent = 'Update server';
+			$('updatebadge').className = 'pill hidden';
 			svc('update', {}, poll);
 			setTimeout(checkUpdate, 60000);
 		};
