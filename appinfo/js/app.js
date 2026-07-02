@@ -762,6 +762,10 @@
 
 	window.addEventListener('load', function () {
 		wire();
+		// Reflect the safe "nothing running yet" state immediately, so Stop/
+		// Restart/Open start greyed instead of looking active until the first
+		// status poll (which can lag a few seconds while the service spawns).
+		updateButtons();
 		setupNav();
 		setupLifecycle();
 		startPolling();
