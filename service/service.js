@@ -235,20 +235,25 @@ service.register('launchMediaPlayer', function (message) {
 // firmwareVersion looks like "05.50.00"; sdkVersion is the webOS version, e.g.
 // "4.10.0". Works on every webOS version (this systemproperty key set is old).
 service.register('getDeviceInfo', function (message) {
-	child.execFile('luna-send', ['-n', '1', '-f', 'luna://com.webos.service.tv.systemproperty/getSystemInfo', '{"keys":["firmwareVersion","sdkVersion","modelName"]}'], { timeout: 10000 }, function (err, stdout) {
-		var fw = '',
-			os = '',
-			model = '';
-		try {
-			var j = JSON.parse(String(stdout || '{}'));
-			fw = String(j.firmwareVersion || '');
-			os = String(j.sdkVersion || '');
-			model = String(j.modelName || '');
-		} catch (e) {
-			/* leave blank on parse failure */
-		}
-		message.respond({ returnValue: true, firmwareVersion: fw, webosVersion: os, modelName: model });
-	});
+	child.execFile(
+		'luna-send',
+		['-n', '1', '-f', 'luna://com.webos.service.tv.systemproperty/getSystemInfo', '{"keys":["firmwareVersion","sdkVersion","modelName"]}'],
+		{ timeout: 10000 },
+		function (err, stdout) {
+			var fw = '',
+				os = '',
+				model = '';
+			try {
+				var j = JSON.parse(String(stdout || '{}'));
+				fw = String(j.firmwareVersion || '');
+				os = String(j.sdkVersion || '');
+				model = String(j.modelName || '');
+			} catch (e) {
+				/* leave blank on parse failure */
+			}
+			message.respond({ returnValue: true, firmwareVersion: fw, webosVersion: os, modelName: model });
+		},
+	);
 });
 
 // Keep the service resident. webOS shuts a JS service down as soon as it holds
