@@ -252,7 +252,7 @@ service.register('getDeviceInfo', function (message) {
 				/* leave blank on parse failure */
 			}
 			message.respond({ returnValue: true, firmwareVersion: fw, webosVersion: os, modelName: model });
-		},
+		}
 	);
 });
 
