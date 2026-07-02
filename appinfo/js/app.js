@@ -22,12 +22,20 @@
 	var hookKnown = false; // hookOn has been read at least once
 	var pickerOpen = false;
 	var currentVersion = '';
+	var lampaAppId = null; // resolved Lampa app id (varies by build: lampa.tv, com.lampa.tv…)
+	var lampaChecked = false; // frontend launch-point scan has completed
 
 	// Homebrew Channel service — its methods are all in the public Luna group, so a
 	// normal web app may call them. We use `exec` (runs as root) to manage the
 	// autostart boot hook directly. This works on any rooted TV whether or not our
 	// own service is elevated, and needs no reboot — unlike elevating the service.
 	var HBCHANNEL = 'org.webosbrew.hbchannel.service';
+	// The system application manager. Launching another app must be done from the
+	// app itself — the frontend call carries our registered app identity, which
+	// the manager accepts, whereas a call from the jailed background service (or
+	// bare luna-send) is rejected as "invalid parameters" on webOS 9.
+	var APPMGR = 'com.webos.applicationManager';
+	var LAMPA_FALLBACK_ID = 'com.lampa.tv';
 	var HOOK = '/var/lib/webosbrew/init.d/torrserver';
 	var SVC_DIRS = '/media/developer/apps/usr/palm/services/com.torrserver.app.service /media/cryptofs/apps/usr/palm/services/com.torrserver.app.service';
 	var ENABLE_CMD =
@@ -140,8 +148,11 @@
 			btnA.disabled = true;
 			btnA.className = 'btn disabled';
 		}
-		// Show the Lampa shortcut only when the Lampa app is installed.
-		$('btnLampa').className = 'btn' + (s.lampaInstalled ? '' : ' hidden');
+		// Show the Lampa shortcut when Lampa is installed. The startup scan yields
+		// the exact app id to launch; the service's own fs check is a fallback so
+		// the button still appears on TVs where the scan could not run.
+		var lampaAvail = !!lampaAppId || !!s.lampaInstalled;
+		$('btnLampa').className = 'btn' + (lampaAvail ? '' : ' hidden');
 		var urls = s.accessUrls || [];
 		firstUrl = urls.length ? urls[0] : null;
 		$('urls').textContent = urls.length ? urls.join('    ') : 'http://<tv-ip>:' + (s.port || 8090);
@@ -429,7 +440,25 @@
 		$('btnLogs').onclick = toggleLogs;
 		$('btnLampa').onclick = function () {
 			msg('Launching Lampa…');
-			svc('launchLampa', {});
+			var id = lampaAppId || LAMPA_FALLBACK_ID;
+			var failed = function () {
+				msg('Could not launch Lampa. Open it from the TV home screen.');
+			};
+			// Launching an app is rejected from the jailed service and from the
+			// frontend's limited role on webOS 9, but a root luna-send (via the
+			// Homebrew Channel, the same path we use for autostart) works. Fall
+			// back to a direct frontend launch for non-rooted / older TVs.
+			var frontendLaunch = function () {
+				svc('launch', { id: id }, function () {}, failed, APPMGR);
+			};
+			hbExec(
+				'luna-send -n 1 luna://com.webos.applicationManager/launch \'{"id":"' + id + '"}\'',
+				function (out) {
+					if (/"returnValue"\s*:\s*true/.test(out)) return;
+					frontendLaunch();
+				},
+				frontendLaunch,
+			);
 		};
 		$('btnMedia').onclick = function () {
 			msg('Launching media player…');
@@ -482,6 +511,26 @@
 				notRooted = true;
 			},
 			HBCHANNEL,
+		);
+	}
+
+	// Find the installed Lampa app (its id differs between builds, e.g. lampa.tv
+	// vs com.lampa.tv) by listing the app directories as root once at startup.
+	// Storing the exact id lets the Lampa button launch reliably and also drives
+	// its visibility. Non-rooted TVs fall back to the service's fs check.
+	function probeLampa() {
+		hbExec(
+			'for d in /media/developer/apps/usr/palm/applications/*lampa* ' +
+				'/media/cryptofs/apps/usr/palm/applications/*lampa*; do ' +
+				'[ -d "$d" ] && basename "$d"; done 2>/dev/null | head -1',
+			function (out) {
+				if (out) {
+					lampaAppId = out;
+					lampaChecked = true;
+					poll();
+				}
+			},
+			function () {}
 		);
 	}
 
@@ -593,6 +642,7 @@
 		startPolling();
 		checkUpdate();
 		probeRoot();
+		probeLampa();
 		updateTimer = setInterval(checkUpdate, 30 * 60 * 1000);
 
 		var xhr = new XMLHttpRequest();

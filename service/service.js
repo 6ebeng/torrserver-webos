@@ -20,7 +20,12 @@ var SERVICE_ID = 'com.torrserver.app.service';
 var PORT = 8090;
 var SCRIPT = path.join(__dirname, 'torrserver-run.sh');
 var LAMPA_ID = 'com.lampa.tv';
-var LAMPA_DIRS = ['/media/developer/apps/usr/palm/applications/com.lampa.tv', '/media/cryptofs/apps/usr/palm/applications/com.lampa.tv'];
+var LAMPA_DIRS = [
+	'/media/developer/apps/usr/palm/applications/com.lampa.tv',
+	'/media/cryptofs/apps/usr/palm/applications/com.lampa.tv',
+	'/media/developer/apps/usr/palm/applications/lampa.tv',
+	'/media/cryptofs/apps/usr/palm/applications/lampa.tv',
+];
 
 var service = new Service(SERVICE_ID);
 
@@ -199,8 +204,12 @@ service.register('disableAutostart', function (message) {
 
 // TorrServer-specific quick launchers, preserving the original app's shortcuts.
 service.register('launchLampa', function (message) {
-	lunaSend('luna://com.webos.applicationManager/launch', { id: LAMPA_ID }, function () {
-		message.respond({ returnValue: true, launched: true, app: LAMPA_ID });
+	// The frontend passes the exact app id it resolved from the launch points;
+	// fall back to the common id if it did not. (This path is mainly for older
+	// webOS where a service is permitted to launch apps.)
+	var id = (message.payload && message.payload.id) || LAMPA_ID;
+	lunaSend('luna://com.webos.applicationManager/launch', { id: id }, function () {
+		message.respond({ returnValue: true, launched: true, app: id });
 	});
 });
 
