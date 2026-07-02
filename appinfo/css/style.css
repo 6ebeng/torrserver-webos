@@ -19,11 +19,10 @@ html, body {
 header {
   display: flex;
   align-items: center;
-  gap: 24px;
   margin-bottom: 32px;
 }
 
-header .logo { width: 64px; height: 64px; border-radius: 12px; }
+header .logo { width: 64px; height: 64px; border-radius: 12px; margin-right: 24px; }
 header h1 { font-size: 44px; font-weight: 700; letter-spacing: 0.5px; }
 
 .badge {
@@ -37,7 +36,10 @@ header h1 { font-size: 44px; font-weight: 700; letter-spacing: 0.5px; }
 .badge.busy    { background: #8a6d1f; color: #fff3d6; }
 .badge.error   { background: #8a2727; color: #ffd6d6; }
 
-main { flex: 1; display: flex; flex-direction: column; gap: 28px; min-height: 0; }
+main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+/* Vertical spacing between sections (flexbox `gap` is unsupported on old webOS). */
+main > * { margin-bottom: 28px; }
+main > *:last-child { margin-bottom: 0; }
 
 .card {
   background: #16201b;
@@ -57,11 +59,15 @@ main { flex: 1; display: flex; flex-direction: column; gap: 28px; min-height: 0;
 .row .k { color: #8ca397; }
 .row .v { color: #e8f3ec; font-weight: 600; max-width: 70%; text-align: right; word-break: break-all; }
 
-.actions { display: flex; flex-wrap: wrap; gap: 20px; }
+/* Old webOS (Chromium ~38) ignores flexbox `gap`, so buttons would touch.
+   Use margins instead, which work on every webOS version. The negative
+   container margin keeps the row edges flush with the rest of the layout. */
+.actions { display: flex; flex-wrap: wrap; margin: -10px; }
 
 .btn {
   font-size: 30px;
   font-weight: 600;
+  margin: 10px;
   padding: 20px 42px;
   border-radius: 14px;
   border: 3px solid transparent;
@@ -84,7 +90,8 @@ main { flex: 1; display: flex; flex-direction: column; gap: 28px; min-height: 0;
   color: #b9cabf;
 }
 
-footer { margin-top: 24px; min-height: 32px; font-size: 22px; color: #8ca397; display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+footer { margin-top: 24px; min-height: 32px; font-size: 22px; color: #8ca397; display: flex; justify-content: space-between; align-items: center; }
+footer #msg { margin-right: 24px; }
 footer b { color: #cdded4; }
 #credit { color: #5c6c63; font-size: 18px; white-space: nowrap; }
 
