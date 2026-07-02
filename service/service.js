@@ -19,7 +19,6 @@ var child = require('child_process');
 var SERVICE_ID = 'com.torrserver.app.service';
 var PORT = 8090;
 var SCRIPT = path.join(__dirname, 'torrserver-run.sh');
-var AUTOSTART_HOOK = '/var/lib/webosbrew/init.d/torrserver';
 var LAMPA_ID = 'com.lampa.tv';
 var LAMPA_DIRS = ['/media/developer/apps/usr/palm/applications/com.lampa.tv', '/media/cryptofs/apps/usr/palm/applications/com.lampa.tv'];
 
@@ -85,13 +84,10 @@ function readStatus(cb) {
 		}
 		data.accessUrls = accessUrls();
 		data.lampaInstalled = lampaInstalled();
-		// Check if the autostart init script exists (script also reports this;
-		// re-check here as a fallback in case the JSON failed to parse).
-		try {
-			data.autostart = fs.existsSync(AUTOSTART_HOOK);
-		} catch (e) {
-			/* keep value from script */
-		}
+		// The `autostart` field comes from the control script, which checks the
+		// real boot hook through hbchannel (root, host namespace). We must NOT
+		// re-check it here with fs.existsSync: this service runs inside a jail
+		// with a private mount namespace and cannot see /var/lib/webosbrew.
 		data.returnValue = true;
 		cb(data);
 	});
@@ -152,14 +148,16 @@ service.register('checkUpdate', function (message) {
 registerAsyncAction('autostart', 'start', 'started');
 
 service.register('enableAutostart', function (message) {
-	runScript(['enable-autostart'], 15000, function () {
-		message.respond({ returnValue: true, autostart: true });
+	runScript(['enable-autostart'], 25000, function (err, stdout) {
+		var ok = String(stdout || '').indexOf('enabled') !== -1;
+		message.respond({ returnValue: true, autostart: ok });
 	});
 });
 
 service.register('disableAutostart', function (message) {
-	runScript(['disable-autostart'], 15000, function () {
-		message.respond({ returnValue: true, autostart: false });
+	runScript(['disable-autostart'], 25000, function (err, stdout) {
+		var off = String(stdout || '').indexOf('disabled') !== -1;
+		message.respond({ returnValue: true, autostart: !off });
 	});
 });
 

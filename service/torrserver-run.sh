@@ -69,6 +69,11 @@ mkdir -p "$DATA_DIR" "$APP_DIR" "$DATA_SUB" "$DATA_DIR/tmp" 2>/dev/null
 
 set_state() { echo "$1" >"$STATEFILE" 2>/dev/null; }
 
+# The boot hook lives on the host filesystem under /var/lib/webosbrew and is run
+# as root at startup. Reading/writing it therefore requires the service to run
+# elevated (root, un-jailed). The Homebrew Channel grants this at install time
+# because the app manifest sets "rootRequired": true, so a plain filesystem
+# check/copy/remove is all that is needed here.
 autostart_enabled() { [ -f "$AUTOSTART_DST" ]; }
 
 enable_autostart() {
