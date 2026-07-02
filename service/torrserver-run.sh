@@ -299,6 +299,23 @@ do_install() {
     return 0
 }
 
+# Is TorrServer actually SERVING yet?  is_running only proves the process exists;
+# the HTTP port takes another moment to bind. We treat the server as "running"
+# only once the port answers, so the UI keeps showing "Starting…" until the Web
+# UI is genuinely reachable instead of flashing the green Running chip a second
+# after launch. curl without -f returns success for any HTTP reply (even a 404),
+# so this just confirms the socket is accepting connections; connection-refused
+# (port not bound yet) is a non-zero exit. Falls back to a raw /proc/net/tcp
+# listen-port check when curl is unavailable.
+server_responding() {
+    if command -v curl >/dev/null 2>&1; then
+        curl -s -m 2 -o /dev/null "http://127.0.0.1:$PORT/echo" 2>/dev/null
+        return $?
+    fi
+    _hex=$(printf '%04X' "$PORT" 2>/dev/null)
+    [ -n "$_hex" ] && grep -qi ":$_hex 00000000:0000 0A" /proc/net/tcp 2>/dev/null
+}
+
 do_start() {
     if is_running; then set_state "running"; return 0; fi
     # Reinstall if missing or if the previously installed arch no longer matches.
@@ -340,11 +357,15 @@ EOF
         "$BIN" -p "$PORT" -d "$DATA_SUB" >>"$LOG" 2>&1 &
     echo $! >"$PIDFILE"
 
-    # Wait for the program to bind (can take a few seconds on slow TVs).
+    # Wait for the program to actually start SERVING (not merely exist): declare
+    # "running" only once the HTTP port answers, so the UI keeps showing
+    # "Starting…" until the Web UI is genuinely reachable, instead of flipping to
+    # the green Running chip a second after launch (which is visible on a
+    # stop→start, where there is no download to mask it).
     i=0
-    while [ $i -lt 15 ]; do
+    while [ $i -lt 30 ]; do
         sleep 1
-        if is_running; then
+        if is_running && server_responding; then
             set_state "running"
             # Autostart is ON by default: install the boot hook on the first
             # successful start. The one-time marker (also written when the user
@@ -362,6 +383,10 @@ EOF
         i=$((i + 1))
     done
 
+    # The port never answered within the window. If the process is at least alive
+    # (slow TV still binding), report running rather than a false error; only if
+    # it is truly gone do we surface a launch failure.
+    if is_running; then set_state "running"; return 0; fi
     set_state "error:launch"
     return 1
 }
