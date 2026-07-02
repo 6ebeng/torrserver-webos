@@ -116,17 +116,20 @@ footer b { color: #cdded4; }
 .dialog {
   width: 720px;
   max-width: 86%;
-  max-height: 80%;
-  display: flex;
-  flex-direction: column;
   background: #16201b;
   border: 1px solid #26342c;
   border-radius: 18px;
   padding: 32px;
+  overflow: hidden;
 }
 .dialog-title { font-size: 34px; font-weight: 700; margin-bottom: 8px; }
 .dialog-sub { font-size: 22px; color: #8ca397; margin-bottom: 24px; }
-.vlist { flex: 1; overflow-y: auto; min-height: 0; margin-bottom: 24px; }
+/* Old webOS (Chromium ~38) does not reliably shrink a flex:1 child, so instead
+   of relying on flex to bound the scroll area we cap the list height directly.
+   This keeps the dialog sized to its content and the Cancel button always
+   visible below the list. overflow-x is hidden and a little right padding keeps
+   the items clear of the vertical scrollbar. */
+.vlist { max-height: 470px; overflow-y: auto; overflow-x: hidden; margin-bottom: 24px; padding-right: 12px; }
 .vitem {
   display: block;
   width: 100%;

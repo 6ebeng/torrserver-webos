@@ -9,7 +9,7 @@
 	"rootRequired": true,
 	"ipkUrl": "https://github.com/6ebeng/torrserver-webos/releases/download/v1.1.0/com.torrserver.app_1.1.0_all.ipk",
 	"ipkHash": {
-		"sha256": "13c08e0e519f3e50f0b826b98dc3ddd4a59bdb800294424dd9c235307ef0a7f5"
+		"sha256": "9630bb552313423aca7f4ff0d15e0f6819678038d921025134de6260528eaa5b"
 	},
-	"ipkSize": 75784
+	"ipkSize": 75964
 }
