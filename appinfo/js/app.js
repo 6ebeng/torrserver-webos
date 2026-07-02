@@ -228,7 +228,15 @@
 		}
 		$('state').textContent = stateText;
 		$('version').textContent = s.version || '—';
+		// When the installed version actually changes (an update or a manual
+		// version pick just finished), re-check upstream right away so the
+		// "update available" badge/button and version chip reflect the new
+		// build instead of lingering stale until the 30-minute timer fires.
+		var prevVersion = currentVersion;
 		currentVersion = s.version || '';
+		if (currentVersion && prevVersion && currentVersion !== prevVersion) {
+			checkUpdate();
+		}
 		$('arch').textContent = s.arch || '—';
 		$('datadir').textContent = s.dataDir || '—';
 		// Autostart status. On a rooted TV we manage the boot hook ourselves via

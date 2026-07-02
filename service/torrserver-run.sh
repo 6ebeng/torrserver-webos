@@ -156,6 +156,24 @@ download() {
     return 1
 }
 
+# remote_size <url> -> best-effort Content-Length of a remote file, printed as a
+# plain integer (empty on failure). Used by the manual version picker, whose
+# direct download endpoint has no API "size" field, so the UI can still show a
+# percentage instead of a bare byte counter.
+remote_size() {
+    _u="$1"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsIL --connect-timeout 15 -A "$UA" "$_u" 2>/dev/null \
+            | grep -i '^content-length:' | tail -n1 | tr -dc '0-9'
+        return 0
+    fi
+    if command -v wget >/dev/null 2>&1; then
+        wget -q -S --spider -T 15 "$_u" 2>&1 \
+            | grep -i 'content-length:' | tail -n1 | tr -dc '0-9'
+        return 0
+    fi
+}
+
 # Fetch the latest release tag from GitHub and cache it. Returns the cached
 # value immediately if checked within the last hour, so polling stays cheap.
 do_latest() {
@@ -238,6 +256,10 @@ do_install() {
         # hitting (and being rate-limited by) the GitHub API.
         url="https://github.com/$REPO/releases/download/$_want/$asset"
         ver="$_want"
+        # Probe the asset size up front so the UI shows real percentage progress
+        # (the direct endpoint has no API "size" field to read).
+        total=$(remote_size "$url")
+        [ -n "$total" ] && echo "$total" >"$TOTALFILE"
     else
         if ! download "$API_URL" "$json"; then set_state "error:api"; return 1; fi
 
