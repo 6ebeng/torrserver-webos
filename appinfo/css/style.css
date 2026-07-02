@@ -148,7 +148,7 @@ footer b { color: #cdded4; }
    This keeps the dialog sized to its content and the Cancel button always
    visible below the list. overflow-x is hidden and a little right padding keeps
    the items clear of the vertical scrollbar. */
-.vlist { max-height: 470px; overflow-y: auto; overflow-x: hidden; margin-bottom: 24px; padding-right: 12px; }
+.vlist { max-height: 470px; overflow-y: auto; overflow-x: hidden; margin-bottom: 24px; padding: 6px 12px 6px 6px; }
 .vitem {
   display: block;
   width: 100%;
