@@ -7,11 +7,19 @@
 # The deploy script does this for you when run with -Autostart, and the in-app
 # "Autostart" button manages it via enable-autostart / disable-autostart.
 #
-for d in /media/developer/apps/usr/palm/services/com.torrserver.app.service \
-         /media/cryptofs/apps/usr/palm/services/com.torrserver.app.service; do
-    if [ -f "$d/torrserver-run.sh" ]; then
-        sh "$d/torrserver-run.sh" start >/dev/null 2>&1 &
-        break
-    fi
-done
+# Ask our Luna service to start TorrServer so the running process is owned by
+# the very service the app uses to stop and monitor it. Starting the binary
+# directly (as root, in a different data dir) would leave a process the jailed
+# service can neither stop nor report on.
+luna-send -n 1 -f luna://com.torrserver.app.service/start '{}' >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    # Fallback for firmwares where the Luna bus is not ready this early at boot.
+    for d in /media/developer/apps/usr/palm/services/com.torrserver.app.service \
+             /media/cryptofs/apps/usr/palm/services/com.torrserver.app.service; do
+        if [ -f "$d/torrserver-run.sh" ]; then
+            sh "$d/torrserver-run.sh" start >/dev/null 2>&1 &
+            break
+        fi
+    done
+fi
 exit 0

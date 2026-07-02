@@ -437,12 +437,16 @@
 		$('btnStop').onclick = function () {
 			msg('Stopping…');
 			flashBusy('btnStop');
-			svc('stop', {}, poll);
+			stopServer(poll);
 		};
 		$('btnRestart').onclick = function () {
 			msg('Restarting…');
 			flashBusy('btnRestart');
-			svc('restart', {}, poll);
+			// Clear any root-owned instance first so the (jailed) service can
+			// cleanly restart its own instance instead of seeing it "running".
+			rootKill(function () {
+				svc('restart', {}, poll);
+			});
 		};
 		$('btnUpdate').onclick = function () {
 			msg('Updating to the latest TorrServer release…');
@@ -530,6 +534,40 @@
 		);
 	}
 
+	// Kill any TorrServer left running as root by the boot hook: a jailed service
+	// runs as a normal user and cannot signal a root-owned process, so Stop would
+	// otherwise silently do nothing. A no-op on non-rooted TVs.
+	function rootKill(done) {
+		if (hbRooted !== true) {
+			if (done) done();
+			return;
+		}
+		hbExec(
+			'pkill -9 -x TorrServer 2>/dev/null; rm -f /media/developer/torrserver/torrserver.pid 2>/dev/null; echo stopped > /media/developer/torrserver/state 2>/dev/null; echo DONE',
+			function () {
+				if (done) done();
+			},
+			function () {
+				if (done) done();
+			},
+		);
+	}
+
+	// Stop the server through the (jailed) service, then make sure no root-owned
+	// instance survives on a rooted TV.
+	function stopServer(done) {
+		svc(
+			'stop',
+			{},
+			function () {
+				rootKill(done);
+			},
+			function () {
+				rootKill(done);
+			},
+		);
+	}
+
 	// Probe root once at startup: checkRoot succeeds only on a rooted TV with the
 	// Homebrew Channel. If rooted, read the current boot-hook state so the button
 	// reflects reality; otherwise mark the TV as not rooted (button greys out).
@@ -579,6 +617,10 @@
 		hbExec(CHECK_CMD, function (out) {
 			hookOn = out.indexOf('ON') === 0;
 			hookKnown = true;
+			// Keep an already-enabled hook current with this app version. Older
+			// hooks launched TorrServer directly as root — which the jailed
+			// service cannot stop — so silently re-copy the up-to-date hook.
+			if (hookOn) hbExec(ENABLE_CMD, function () {});
 		});
 	}
 

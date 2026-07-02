@@ -373,6 +373,11 @@ do_status() {
     if is_running; then r=true; else r=false; fi
     if [ -x "$BIN" ]; then ins=true; else ins=false; fi
     st=$(cat "$STATEFILE" 2>/dev/null); [ -z "$st" ] && st="idle"
+    # If the process is gone, never report a stale "running/starting/…" state
+    # (e.g. after the server was killed out-of-band on a rooted TV).
+    if [ "$r" = false ]; then
+        case "$st" in running|starting|downloading|restarting) st="stopped" ;; esac
+    fi
     ver=$(cat "$VERFILE" 2>/dev/null)
     arch=$(detect_arch)
 
