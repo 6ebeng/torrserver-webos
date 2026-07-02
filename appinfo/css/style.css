@@ -86,6 +86,13 @@ main > *:last-child { margin-bottom: 0; }
 /* Greyed-out, non-interactive button (e.g. Autostart on a non-rooted TV). */
 .btn:disabled, .btn.disabled { background: #1c2621; color: #5c6c63; cursor: default; }
 .btn:disabled:focus, .btn.disabled:focus { border-color: transparent; transform: none; }
+/* Transient loading state shown immediately after a control is pressed, so the
+   press always gives feedback even before the next status poll arrives. */
+.btn.busy { background: #243c30; color: #9fe0bf; cursor: default;
+  -webkit-animation: btnpulse 1s ease-in-out infinite; animation: btnpulse 1s ease-in-out infinite; }
+.btn.busy:focus { border-color: transparent; transform: none; }
+@-webkit-keyframes btnpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes btnpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
 #logwrap { flex: 1; overflow: auto; min-height: 0; padding: 18px; }
 #logs {

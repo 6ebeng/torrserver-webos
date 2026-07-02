@@ -96,6 +96,23 @@
 		return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + ' MB';
 	}
 
+	// Enable or disable an action button while preserving its variant class, so
+	// the UI only offers actions that make sense for the current server state.
+	function setEnabled(id, on) {
+		var b = $(id);
+		var cls = 'btn' + (id === 'btnStart' ? ' primary' : '');
+		b.className = cls + (on ? '' : ' disabled');
+		b.disabled = !on;
+	}
+
+	// Give a control an immediate "working" look the moment it is pressed. The
+	// next status poll (render) restores the correct enabled/disabled state.
+	function flashBusy(id) {
+		var b = $(id);
+		b.className = 'btn busy';
+		b.disabled = true;
+	}
+
 	function render(s) {
 		s = s || {};
 		setBadge(s.running, s.state);
@@ -157,10 +174,28 @@
 		firstUrl = urls.length ? urls[0] : null;
 		$('urls').textContent = urls.length ? urls.join('    ') : 'http://<tv-ip>:' + (s.port || 8090);
 
+		// Only offer the actions that make sense for the current state: no Start
+		// while running, no Stop/Restart while stopped, no Open without a URL.
+		var st = s.state || (s.running ? 'running' : 'stopped');
+		var transitioning = st === 'starting' || st === 'downloading' || st === 'stopping' || st === 'restarting';
+		setEnabled('btnStart', !s.running && !transitioning);
+		setEnabled('btnStop', !!s.running || st === 'starting' || st === 'downloading');
+		setEnabled('btnRestart', !!s.running);
+		setEnabled('btnOpen', !!s.running && !!firstUrl);
+
 		if (s.state && s.state.indexOf('error') === 0) {
 			msg('Failed: ' + s.state + ' — open <b>Logs</b> for details, then press <b>Start</b> to retry.');
 		} else if (s.running) {
 			msg('Running. Manage TorrServer from any device at the Access URL above.');
+		}
+
+		// If the button that had focus just became disabled (e.g. Start after the
+		// server comes up), move focus to the first available control so the
+		// remote never lands on a dead button.
+		var ae = document.activeElement;
+		if (ae && ae.disabled && /(^|\s)btn(\s|$)/.test(ae.className || '')) {
+			var vb = visibleButtons();
+			if (vb.length) vb[0].focus();
 		}
 	}
 
@@ -271,13 +306,16 @@
 		svc('checkUpdate', {}, function (r) {
 			var avail = r && r.updateAvailable;
 			$('updatebadge').className = 'pill' + (avail ? '' : ' hidden');
-			$('btnUpdate').className = 'btn' + (avail ? ' attention' : '');
 			if (avail) {
+				$('btnUpdate').className = 'btn attention';
+				$('btnUpdate').disabled = false;
 				$('btnUpdate').textContent = 'Update to ' + r.latest;
 				msg('A new TorrServer version (<b>' + r.latest + '</b>) is available. Press <b>Update</b> to install.');
 			} else {
-				// Already on the latest release: restore the button to its normal
-				// label and style so it no longer looks like an action is pending.
+				// Already on the latest release: grey the button out so it is clear
+				// there is nothing to update right now.
+				$('btnUpdate').className = 'btn disabled';
+				$('btnUpdate').disabled = true;
 				$('btnUpdate').textContent = 'Update server';
 			}
 		});
@@ -393,22 +431,24 @@
 	function wire() {
 		$('btnStart').onclick = function () {
 			msg('Starting… first launch downloads TorrServer (~70&nbsp;MB), this can take a minute.');
+			flashBusy('btnStart');
 			svc('start', {}, poll);
 		};
 		$('btnStop').onclick = function () {
 			msg('Stopping…');
+			flashBusy('btnStop');
 			svc('stop', {}, poll);
 		};
 		$('btnRestart').onclick = function () {
 			msg('Restarting…');
+			flashBusy('btnRestart');
 			svc('restart', {}, poll);
 		};
 		$('btnUpdate').onclick = function () {
 			msg('Updating to the latest TorrServer release…');
-			// The pending update is being acted on, so drop the attention style
-			// and badge right away instead of waiting for the next checkUpdate.
-			$('btnUpdate').className = 'btn';
-			$('btnUpdate').textContent = 'Update server';
+			// The pending update is being acted on, so show the busy state and
+			// clear the badge right away instead of waiting for the next check.
+			flashBusy('btnUpdate');
 			$('updatebadge').className = 'pill hidden';
 			svc('update', {}, poll);
 			setTimeout(checkUpdate, 60000);
