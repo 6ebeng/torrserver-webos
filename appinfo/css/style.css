@@ -61,8 +61,11 @@ main > *:last-child { margin-bottom: 0; }
 
 /* Old webOS (Chromium ~38) ignores flexbox `gap`, so buttons would touch.
    Use margins instead, which work on every webOS version. The negative
-   container margin keeps the row edges flush with the rest of the layout. */
-.actions { display: flex; flex-wrap: wrap; margin: -7px; }
+   top/left/right margins keep the row edges flush with the rest of the
+   layout; the positive bottom margin (21px + each button's 7px = 28px, to
+   match the spacing between the other sections) keeps the last row of
+   buttons clear of the logs window below, even when a button is focus-scaled. */
+.actions { display: flex; flex-wrap: wrap; margin: -7px -7px 21px; }
 
 .btn {
   font-size: 24px;
