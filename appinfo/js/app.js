@@ -309,7 +309,7 @@
 					$('state').textContent = 'service not responding';
 					msg('Cannot reach the TorrServer service. Reopen the app; if it persists, reinstall from Homebrew Channel.');
 				}
-			},
+			}
 		);
 	}
 
@@ -477,7 +477,7 @@
 			},
 			function () {
 				$('vlist').textContent = 'Could not load versions — check your network and try again.';
-			},
+			}
 		);
 	}
 
@@ -577,7 +577,7 @@
 					if (/"returnValue"\s*:\s*true/.test(out)) return;
 					frontendLaunch();
 				},
-				frontendLaunch,
+				frontendLaunch
 			);
 		};
 		$('btnMedia').onclick = function () {
@@ -608,7 +608,7 @@
 					if (/"returnValue"\s*:\s*true/.test(out)) return;
 					frontendLaunch();
 				},
-				frontendLaunch,
+				frontendLaunch
 			);
 		};
 	}
@@ -626,7 +626,7 @@
 			function (e) {
 				if (onErr) onErr(e);
 			},
-			HBCHANNEL,
+			HBCHANNEL
 		);
 	}
 
@@ -645,7 +645,7 @@
 			},
 			function () {
 				if (done) done();
-			},
+			}
 		);
 	}
 
@@ -660,7 +660,7 @@
 			},
 			function () {
 				rootKill(done);
-			},
+			}
 		);
 	}
 
@@ -686,7 +686,7 @@
 			function () {
 				hbRooted = false;
 				notRooted = true;
-			},
+			}
 		);
 	}
 
@@ -714,7 +714,7 @@
 					poll();
 				}
 			},
-			function () {},
+			function () {}
 		);
 	}
 
@@ -751,7 +751,7 @@
 					autostartBusy = false;
 					msg('Could not update autostart. Please try again.');
 					poll();
-				},
+				}
 			);
 		} else {
 			msg('Enabling autostart…');
@@ -768,7 +768,7 @@
 					autostartBusy = false;
 					msg('Could not update autostart. Please try again.');
 					poll();
-				},
+				}
 			);
 		}
 	}

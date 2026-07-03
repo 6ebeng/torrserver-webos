@@ -1,14 +1,14 @@
 {
 	"id": "com.torrserver.app",
-	"version": "1.1.19",
+	"version": "1.1.20",
 	"type": "web",
 	"title": "TorrServer",
 	"appDescription": "TorrServer is a torrent streaming server that lets you watch torrents without fully downloading them. This port runs TorrServer natively on your webOS TV and is managed from any device at http://<tv-ip>:8090.",
 	"iconUrl": "https://raw.githubusercontent.com/6ebeng/torrserver-webos/main/appinfo/icon.png",
 	"sourceUrl": "https://github.com/6ebeng/torrserver-webos",
-	"ipkUrl": "https://github.com/6ebeng/torrserver-webos/releases/download/v1.1.19/com.torrserver.app_1.1.19_all.ipk",
+	"ipkUrl": "https://github.com/6ebeng/torrserver-webos/releases/download/v1.1.20/com.torrserver.app_1.1.20_all.ipk",
 	"ipkHash": {
-		"sha256": "7651a3086db0fd7d3adc526c5784ba7d19d2a83a900d15f22b21bd22cf43d675"
+		"sha256": "d1427be1a06e661aa8fa47999b06df4ce75e134b760a267743e7c73415bd9cf8"
 	},
 	"ipkSize": 80410
 }
