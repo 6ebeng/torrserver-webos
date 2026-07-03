@@ -32,7 +32,8 @@ The **Lampa** shortcut appears only when the Lampa app (`com.lampa.tv`) is insta
 
 ## Notes
 
-- Autostart is **on by default** — TorrServer launches at boot after the first successful start. Toggle it anytime with the in-app **Autostart** button (your choice is then remembered). Root is detected through the Homebrew Channel, so it works on rooted TVs across webOS versions (including webOS 4.x).
+- Autostart is **on by default** — TorrServer launches at boot after the first successful start. Toggle it anytime with the in-app **Autostart** button (your choice is then remembered). Root is detected through the Homebrew Channel, so it works on rooted TVs across webOS versions (verified on webOS **4.x** and **9.x**).
+- Updating the app is seamless: reinstalling the `.ipk` over an existing install (webOS Dev Manager or Homebrew Channel) **does not require a reboot**. The background service runs on-demand and cleanly de-registers from the Luna bus when idle, so the new version starts responding right away.
 - TorrServer binds all interfaces on port `8090` — keep it on a trusted LAN.
 - The matching CPU architecture (`amd64`, `386`, `arm5`, `arm7`, `arm64`) is detected and downloaded at runtime, so the `.ipk` stays small and always tracks the latest release.
 - Data is stored in the first writable + exec-capable path among `/media/developer/torrserver`, `/home/root/torrserver`, `/media/internal/.torrserver`, `/tmp/torrserver`. Download scratch files are removed after each install to save space.
@@ -61,8 +62,17 @@ scripts/   build / deploy (PowerShell)
 ```
 
 - **Web UI** never blocks: it fires actions and follows progress by polling `status` every 2 s.
-- **Service** is a thin, stateless Luna wrapper; all lifecycle logic lives in the supervisor script.
-- **Supervisor** owns architecture detection, runtime download (curl → wget → Node fallback), the state machine (`state` file) and process supervision (pid file).
+- **Service** is a thin, stateless Luna wrapper; all lifecycle logic lives in the supervisor script. It runs **on-demand** — alive while the app is polling, then it idle-exits a few seconds after the app closes and de-registers from the Luna bus, so app updates never leave a stale registration behind.
+- **Supervisor** owns architecture detection, runtime download (curl → wget → Node fallback), the state machine (`state` file) and process supervision (pid file). Long-running work is detached (`setsid`), so TorrServer keeps running after the service idle-exits.
+
+## Development
+
+The app targets the oldest runtimes webOS ships, so both sides are written to run everywhere:
+
+- **Service** (`service/`) runs on **Node.js 0.12 (ES5)** on older TVs — no `let`/`const`, arrow functions, or ES2017 trailing commas in calls.
+- **Web UI** (`appinfo/`) runs in the TV WebView, which is **Chromium 53** on webOS 4.x — the same trailing-comma restriction applies.
+
+A committed `.prettierrc.json` pins `trailingComma: "es5"` so formatting can't reintroduce a call/param trailing comma (which would break parsing on those old runtimes).
 
 ## Credits
 
