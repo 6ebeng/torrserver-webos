@@ -27,7 +27,13 @@ var LAMPA_DIRS = [
 	'/media/cryptofs/apps/usr/palm/applications/lampa.tv',
 ];
 
-var service = new Service(SERVICE_ID);
+// idleTimer (seconds): webos-service exits this on-demand service through its
+// normal clean path this many seconds after the last Luna call (which properly
+// de-registers the Luna name). The front-end polls every ~2s so the service
+// stays alive and responsive while the app is open, then exits on its own when
+// the app closes. See the note where keepAlive() used to be for why staying
+// resident is harmful.
+var service = new Service(SERVICE_ID, null, { idleTimer: 10 });
 
 // Make sure the control script is executable after install.
 try {
@@ -256,20 +262,38 @@ service.register('getDeviceInfo', function (message) {
 	);
 });
 
-// Keep the service resident. webOS shuts a JS service down as soon as it holds
-// no active "activity" - the launcher logs "no active activities, exiting" and
-// the process can die before (or between) Luna calls are delivered. Holding one
-// activity open from startup keeps the service alive and responsive so the TV UI
-// can reliably call status/start/stop and poll download progress.
-function keepAlive() {
-	try {
-		service.activityManager.create('torrserver-keepalive', function (activity) {
-			// Intentionally never completed -> the service stays alive.
-		});
-	} catch (e) {
-		// If activity creation is unavailable, fall back to a no-op timer so the
-		// Node event loop at least stays alive within a single launch.
-		setInterval(function () {}, 60000);
+// Explicitly de-register from the Luna bus on every exit path so ls-hubd frees
+// our service name immediately. This is the key to surviving app updates.
+//
+// webOS runs this as an on-demand ("dynamic") service and webos-service's
+// ActivityManager exits it cleanly a few seconds (idleTimer, set above) after
+// the last Luna call. The front-end polls status every ~2s, so the service
+// stays alive while the app is open and exits on its own once the app closes -
+// it is never a resident process. That matters for updates: installing a new
+// .ipk over a *resident* service kills it abruptly, and ls-hubd keeps
+// advertising the now-dead PID (a "ghost" that hangs every future call, UI
+// stuck on "checking status", until reboot).
+//
+// But an elevated (hbchannel) service adds an extra launcher process that
+// breaks ls-hubd's automatic socket-close detection, so even a clean exit can
+// ghost. To avoid that we de-register our bus handle(s) explicitly on exit,
+// which tells ls-hubd to free the name right away so the next call relaunches a
+// fresh instance. Long-running work (download / start) is detached inside
+// torrserver-run.sh via setsid, so it keeps running after this service exits.
+function deregister() {
+	var handles = [service.handle, service.privateHandle, service.publicHandle];
+	for (var i = 0; i < handles.length; i++) {
+		try {
+			if (handles[i] && typeof handles[i].unregister === 'function') handles[i].unregister();
+		} catch (e) {
+			/* ignore */
+		}
 	}
 }
-keepAlive();
+process.on('exit', deregister);
+process.on('SIGTERM', function () {
+	process.exit(0);
+});
+process.on('SIGINT', function () {
+	process.exit(0);
+});
