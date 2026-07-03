@@ -77,6 +77,10 @@ main > *:last-child { margin-bottom: 0; }
 .rowend .v { margin-right: 18px; max-width: none; }
 .btn.rowbtn { font-size: 20px; padding: 9px 20px; margin: 0; white-space: nowrap; flex: 0 0 auto; }
 .btn.rowbtn:focus { transform: scale(1.04); }
+/* Autostart toggle: keep the Enabled/Disabled label white in both states, and
+   use a darker green for the Enabled state so the white text stays readable. */
+#btnAutostart { color: #ffffff; }
+#btnAutostart.primary { background: #1f7a3d; }
 
 /* Old webOS (Chromium ~38) ignores flexbox `gap`, so buttons would touch.
    Use margins instead, which work on every webOS version. The negative
