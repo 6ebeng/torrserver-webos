@@ -60,6 +60,7 @@ main > *:last-child { margin-bottom: 0; }
 
 .row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   padding: 12px 0;
   font-size: 26px;
@@ -68,6 +69,14 @@ main > *:last-child { margin-bottom: 0; }
 .row:last-child { border-bottom: none; }
 .row .k { color: #8ca397; }
 .row .v { color: #e8f3ec; font-weight: 600; max-width: 70%; text-align: right; word-break: break-all; }
+
+/* An inline control button on the right of an info row (Select version,
+   Autostart, Cache storage), grouped with the row value via .rowend so the
+   control sits next to the value it changes. */
+.rowend { display: flex; align-items: center; justify-content: flex-end; min-width: 0; max-width: 80%; }
+.rowend .v { margin-right: 18px; max-width: none; }
+.btn.rowbtn { font-size: 20px; padding: 9px 20px; margin: 0; white-space: nowrap; flex: 0 0 auto; }
+.btn.rowbtn:focus { transform: scale(1.04); }
 
 /* Old webOS (Chromium ~38) ignores flexbox `gap`, so buttons would touch.
    Use margins instead, which work on every webOS version. The negative

@@ -885,8 +885,13 @@
 	}
 
 	function setupNav() {
-		var first = visibleButtons();
-		if (first.length) first[0].focus();
+		// Start with focus on the primary action (Start) rather than the first
+		// inline row button (Select version), so the most common action is where
+		// the D-pad lands on open.
+		var vis = visibleButtons();
+		var start = $('btnStart');
+		if (start && vis.indexOf(start) !== -1) start.focus();
+		else if (vis.length) vis[0].focus();
 
 		document.addEventListener('keydown', function (e) {
 			var k = e.keyCode;
