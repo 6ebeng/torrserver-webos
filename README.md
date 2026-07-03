@@ -24,20 +24,24 @@ powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Autostart  # also e
 1. Launch **TorrServer** on the TV and press **Start** (first launch downloads ~70 MB).
 2. Manage from any device at `http://<tv-ip>:8090`.
 
-Buttons: Start / Stop / Restart / Update / Select version / Cache storage / Autostart / Open Web UI / Lampa / MediaPlayer / Logs.
+Each control sits inline with the value it changes:
 
-The header shows the TV's **Firmware version** and **webOS version**. The **Status** row is a coloured chip (green when running, grey when stopped), and the footer shows a context tip for the current state.
+- **Start/Stop** is one toggle button (green **Start** when stopped, **Stop** when running), next to **Restart** in the actions bar.
+- **Server Version** row → **Select version** (install or downgrade any release).
+- **Autostart** row → an **Enabled/Disabled** toggle (hidden, with an explanation, on non-rooted TVs).
+- **Cache storage** row → **Change** (move the torrent cache to a USB drive).
+- The actions bar also has **Update server**, **Open Web UI**, **MediaPlayer** and **Logs** (plus **Lampa** when the Lampa app is installed).
 
-The **Lampa** shortcut appears only when the Lampa app (`com.lampa.tv`) is installed. **MediaPlayer** opens the TV's built-in media player (Photo/Video on webOS &lt; 6, MediaPlayer on webOS 6+). **Open Web UI** launches the TV browser at the TorrServer address.
+The header shows the TV's **Firmware version** and **webOS version**. The **Status** row is a coloured chip (green when running, grey when stopped), and the footer shows a context tip for the current state. **Logs** open in a modal overlay (D-pad up/down scrolls). **MediaPlayer** opens the TV's built-in media player (Photo/Video on webOS &lt; 6, MediaPlayer on webOS 6+). **Open Web UI** launches the TV browser at the TorrServer address.
 
 ## Notes
 
-- Autostart is **on by default** — TorrServer launches at boot after the first successful start. Toggle it anytime with the in-app **Autostart** button (your choice is then remembered). Root is detected through the Homebrew Channel, so it works on rooted TVs across webOS versions (verified on webOS **4.x** and **9.x**).
+- Autostart is **on by default** — TorrServer launches at boot after the first successful start. Toggle it anytime with the **Enabled/Disabled** button on the Autostart row (your choice is then remembered). Root is detected through the Homebrew Channel, so it works on rooted TVs across webOS versions (verified on webOS **4.x** and **9.x**); on non-rooted TVs the toggle is hidden.
 - Updating the app is seamless: reinstalling the `.ipk` over an existing install (webOS Dev Manager or Homebrew Channel) **does not require a reboot**. The background service runs on-demand and cleanly de-registers from the Luna bus when idle, so the new version starts responding right away.
 - TorrServer binds all interfaces on port `8090` — keep it on a trusted LAN.
 - The matching CPU architecture (`amd64`, `386`, `arm5`, `arm7`, `arm64`) is detected and downloaded at runtime, so the `.ipk` stays small and always tracks the latest release.
 - Data is stored in the first writable + exec-capable path among `/media/developer/torrserver`, `/home/root/torrserver`, `/media/internal/.torrserver`, `/tmp/torrserver`. Download scratch files are removed after each install to save space.
-- **Cache storage:** by default the torrent cache lives in a small in-RAM buffer. Plug in a USB drive and use the **Cache storage** button to move the torrent cache/downloads onto it (handy for large files and to spare internal storage). The TorrServer program and its database always stay on internal storage — the USB drive only holds the cache. If the drive is removed, TorrServer automatically falls back to the in-RAM cache.
+- **Cache storage:** by default the torrent cache lives in a small in-RAM buffer. Plug in a USB drive and use the **Change** button on the Cache storage row to move the torrent cache/downloads onto it (handy for large files and to spare internal storage). The TorrServer program and its database always stay on internal storage — the USB drive only holds the cache. If the drive is removed, TorrServer automatically falls back to the in-RAM cache.
 
 ## Layout
 
