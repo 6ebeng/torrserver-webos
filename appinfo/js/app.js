@@ -150,8 +150,14 @@
 			pendingWant = null;
 		}
 
-		setBtnDisabled($('btnStart'), running || busy);
-		setBtnDisabled($('btnStop'), !running || busy);
+		// Start/Stop are one toggle button: it shows the current state and does the
+		// opposite action. It is enabled whenever no transition is in progress, and
+		// uses the green "primary" style only when it would Start.
+		var toggle = $('btnToggle');
+		setBtnDisabled(toggle, busy);
+		toggle.textContent = running ? 'Stop' : 'Start';
+		if (running) removeClass(toggle, 'primary');
+		else addClass(toggle, 'primary');
 		setBtnDisabled($('btnRestart'), !running || busy);
 		setBtnDisabled($('btnSelectVersion'), busy);
 		setBtnDisabled($('btnStorage'), busy);
@@ -164,7 +170,7 @@
 		else removeClass($('btnUpdate'), 'attention');
 
 		// Pulse the pressed button (and the autostart toggle while it works).
-		var ids = ['btnStart', 'btnStop', 'btnRestart', 'btnUpdate', 'btnAutostart', 'btnSelectVersion', 'btnStorage'];
+		var ids = ['btnToggle', 'btnRestart', 'btnUpdate', 'btnAutostart', 'btnSelectVersion', 'btnStorage'];
 		for (var i = 0; i < ids.length; i++) removeClass($(ids[i]), 'loading');
 		if (busy && pendingBtnId) addClass($(pendingBtnId), 'loading');
 		if (autostartBusy) addClass($('btnAutostart'), 'loading');
@@ -250,15 +256,24 @@
 			autostartAvailable = s.autostartAvailable !== false;
 			autostartOn = !!s.autostart;
 		}
-		if (autostartBusy) {
-			$('autostart').textContent = 'Working…';
-			btnA.textContent = 'Autostart: …';
-		} else if (autostartAvailable) {
-			$('autostart').textContent = autostartOn ? 'Enabled' : 'Disabled';
-			btnA.textContent = 'Autostart: ' + (autostartOn ? 'On' : 'Off');
-		} else {
+		// The button itself is the Enabled/Disabled toggle (green when Enabled), so
+		// no separate status text is shown on a rooted TV. A non-rooted TV has no
+		// boot hook, so hide the toggle and explain why instead.
+		if (!autostartAvailable) {
 			$('autostart').textContent = 'Unavailable (TV not rooted)';
-			btnA.textContent = 'Autostart: N/A';
+			addClass(btnA, 'hidden');
+			removeClass(btnA, 'primary');
+		} else if (autostartBusy) {
+			$('autostart').textContent = '';
+			removeClass(btnA, 'hidden');
+			removeClass(btnA, 'primary');
+			btnA.textContent = 'Working…';
+		} else {
+			$('autostart').textContent = '';
+			removeClass(btnA, 'hidden');
+			if (autostartOn) addClass(btnA, 'primary');
+			else removeClass(btnA, 'primary');
+			btnA.textContent = autostartOn ? 'Enabled' : 'Disabled';
 		}
 		// Show the Lampa shortcut when Lampa is installed. The startup scan yields
 		// the exact app id to launch; the service's own fs check is a fallback so
@@ -609,15 +624,15 @@
 	}
 
 	function wire() {
-		$('btnStart').onclick = function () {
-			if (isDisabled($('btnStart'))) return;
-			beginAction('btnStart', 'Starting… first launch downloads TorrServer (~70&nbsp;MB), this can take a minute.', true);
-			svc('start', {}, poll);
-		};
-		$('btnStop').onclick = function () {
-			if (isDisabled($('btnStop'))) return;
-			beginAction('btnStop', 'Stopping…', false);
-			stopServer(poll);
+		$('btnToggle').onclick = function () {
+			if (isDisabled($('btnToggle'))) return;
+			if (lastStatus.running === true) {
+				beginAction('btnToggle', 'Stopping…', false);
+				stopServer(poll);
+			} else {
+				beginAction('btnToggle', 'Starting… first launch downloads TorrServer (~70&nbsp;MB), this can take a minute.', true);
+				svc('start', {}, poll);
+			}
 		};
 		$('btnRestart').onclick = function () {
 			if (isDisabled($('btnRestart'))) return;
@@ -899,7 +914,7 @@
 		// inline row button (Select version), so the most common action is where
 		// the D-pad lands on open.
 		var vis = visibleButtons();
-		var start = $('btnStart');
+		var start = $('btnToggle');
 		if (start && vis.indexOf(start) !== -1) start.focus();
 		else if (vis.length) vis[0].focus();
 
