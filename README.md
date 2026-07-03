@@ -2,7 +2,7 @@
 
 Run [TorrServer](https://github.com/YouROK/TorrServer) on your LG TV. A webOS homebrew app (`.ipk`) with a small launcher UI plus a background service that downloads, runs and supervises the official TorrServer build. Manage it from any device at `http://<tv-ip>:8090`.
 
-> Requires a **rooted** webOS TV with the Homebrew Channel.
+> Works on both **rooted** and **unrooted** TVs. Install in **Developer Mode** (unrooted) or via the **Homebrew Channel** (rooted). Boot **autostart** additionally requires root (the Homebrew Channel); everything else works either way.
 
 ![TorrServer app UI on webOS](assets/app_ui.png)
 
