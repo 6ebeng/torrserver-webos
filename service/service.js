@@ -262,6 +262,38 @@ service.register('getDeviceInfo', function (message) {
 	);
 });
 
+// List USB storage the torrent disk-cache can use, plus the current cache path.
+// An empty `current` means the default in-RAM cache (internal storage).
+service.register('listStorage', function (message) {
+	runScript(['list-usb'], 15000, function (err, stdout) {
+		var usb = String(stdout || '')
+			.split('\n')
+			.map(function (l) {
+				return l.replace(/^\s+|\s+$/g, '');
+			})
+			.filter(function (l) {
+				return l.length > 0;
+			})
+			.map(function (l) {
+				var p = l.split('|');
+				return { path: p[0], free: (parseInt(p[1], 10) || 0) * 1024 };
+			});
+		runScript(['cache'], 8000, function (e2, cur) {
+			message.respond({ returnValue: true, usb: usb, current: String(cur || '').replace(/^\s+|\s+$/g, '') });
+		});
+	});
+});
+
+// Move the torrent cache/downloads to a USB path (or "" / "ram" for the internal
+// RAM cache). The control script self-backgrounds the restart, so we ack at once
+// and the UI follows progress via status polling.
+service.register('setStorage', function (message) {
+	var p = (message.payload && message.payload.path) || '';
+	runScript(['set-storage', String(p)], 15000, function () {
+		message.respond({ returnValue: true, setting: true });
+	});
+});
+
 // Explicitly de-register from the Luna bus on every exit path so ls-hubd frees
 // our service name immediately. This is the key to surviving app updates.
 //

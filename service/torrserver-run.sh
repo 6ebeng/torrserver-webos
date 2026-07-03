@@ -72,6 +72,9 @@ LATESTFILE="$DATA_DIR/latest"
 VERSIONSFILE="$DATA_DIR/versions"
 WANTVERFILE="$DATA_DIR/.want_version"
 AUTOSTART_INIT="$DATA_DIR/.autostart_init"
+SETTINGS_FILE="$DATA_SUB/settings.json"
+CACHEFILE="$DATA_DIR/.cache_path"
+WANTCACHEFILE="$DATA_DIR/.want_cache"
 mkdir -p "$DATA_DIR" "$APP_DIR" "$DATA_SUB" "$DATA_DIR/tmp" 2>/dev/null
 
 set_state() { echo "$1" >"$STATEFILE" 2>/dev/null; }
@@ -316,6 +319,90 @@ server_responding() {
     [ -n "$_hex" ] && grep -qi ":$_hex 00000000:0000 0A" /proc/net/tcp 2>/dev/null
 }
 
+# --------------------------------------------------------------------------
+# Torrent cache / download location.
+#
+# The TorrServer binary and its database always stay on internal storage (the
+# binary must live on an exec-capable filesystem, which USB mounts on webOS are
+# usually not). Only the torrent piece cache / downloads are moved to USB, via
+# TorrServer's UseDisk + TorrentsSavePath settings. The chosen cache directory
+# is remembered in CACHEFILE; empty/absent means the default small in-RAM cache.
+# --------------------------------------------------------------------------
+cache_path() { cat "$CACHEFILE" 2>/dev/null; }
+
+# List USB storage usable for the disk cache: every writable mount point under
+# /tmp/usb (or /media/usb) from /proc/mounts, one per line as "<path>|<free-KB>".
+list_usb() {
+    awk '{print $2}' /proc/mounts 2>/dev/null | while read -r mp; do
+        case "$mp" in
+            /tmp/usb/*|/media/usb/*)
+                if ( echo x >"$mp/.tsw" ) 2>/dev/null; then
+                    rm -f "$mp/.tsw" 2>/dev/null
+                    kb=$(df -k "$mp" 2>/dev/null | awk 'NR==2{print $4}')
+                    [ -n "$kb" ] || kb=0
+                    echo "$mp|$kb"
+                fi
+                ;;
+        esac
+    done
+}
+
+# (Re)write TorrServer's settings.json with the TV-safe network defaults plus the
+# current cache location. A non-empty, creatable CACHEFILE path enables the
+# on-disk cache there; otherwise the small in-RAM cache is used.
+write_settings() {
+    _cp=$(cache_path)
+    # Only use the USB cache if its directory is still present and writable, so a
+    # drive that has been unplugged cleanly falls back to the in-RAM cache
+    # instead of silently writing to a phantom path on the /tmp tmpfs.
+    if [ -n "$_cp" ] && [ -d "$_cp" ] && [ -w "$_cp" ]; then
+        _usedisk=true; _save="$_cp"; _csize=536870912
+    else
+        _usedisk=false; _save=""; _csize=67108864
+    fi
+    mkdir -p "$DATA_SUB" 2>/dev/null
+    cat >"$SETTINGS_FILE" <<EOF
+{
+  "BitTorr": {
+    "CacheSize": $_csize,
+    "ConnectionsLimit": 100,
+    "DisableDHT": true,
+    "DisableUPNP": true,
+    "DisableUTP": true,
+    "DisablePEX": true,
+    "EnableLPD": false,
+    "StoreSettingsInJson": true,
+    "UseDisk": $_usedisk,
+    "TorrentsSavePath": "$_save",
+    "RemoveCacheOnDrop": true
+  }
+}
+EOF
+}
+
+# Choose where the torrent cache/downloads live. Argument is a USB mount path, or
+# "ram"/"internal"/empty to return to the default in-RAM cache. The cache lives
+# in a dedicated sub-folder of the mount so we never write to its root.
+set_cache() {
+    _want="${1:-}"
+    case "$_want" in
+        ""|ram|internal|RAM)
+            rm -f "$CACHEFILE" 2>/dev/null
+            write_settings
+            echo "ram"
+            return 0
+            ;;
+    esac
+    _dir="$_want/torrserver-cache"
+    if ! mkdir -p "$_dir" 2>/dev/null; then echo "error:mkdir"; return 1; fi
+    if ! ( echo x >"$_dir/.tsw" ) 2>/dev/null; then echo "error:readonly"; return 1; fi
+    rm -f "$_dir/.tsw" 2>/dev/null
+    echo "$_dir" >"$CACHEFILE" 2>/dev/null
+    write_settings
+    echo "$_dir"
+    return 0
+}
+
 do_start() {
     if is_running; then set_state "running"; return 0; fi
     # Reinstall if missing or if the previously installed arch no longer matches.
@@ -327,25 +414,11 @@ do_start() {
     # Legacy parity: make any mounted USB storage writable for TorrServer caches.
     chmod -R 777 /tmp/usb 2>/dev/null
 
-    # Seed a TV-safe default config if missing to prevent DHT/uTP from exhausting
-    # the limited webOS network stack (nf_conntrack) which breaks streaming.
-    SETTINGS_FILE="$DATA_SUB/settings.json"
-    if [ ! -f "$SETTINGS_FILE" ]; then
-        cat > "$SETTINGS_FILE" <<EOF
-{
-  "BitTorr": {
-    "CacheSize": 67108864,
-    "ConnectionsLimit": 100,
-    "DisableDHT": true,
-    "DisableUPNP": true,
-    "DisableUTP": true,
-    "DisablePEX": true,
-    "EnableLPD": false,
-    "StoreSettingsInJson": true
-  }
-}
-EOF
-    fi
+    # (Re)generate a TV-safe config on every start (see write_settings): disables
+    # DHT/uTP/PEX so they cannot exhaust the limited webOS network stack, and
+    # applies the chosen cache location (internal RAM by default, or a USB disk
+    # when selected and still present).
+    write_settings
 
     cd "$APP_DIR" 2>/dev/null || { set_state "error:chdir"; return 1; }
     # GODEBUG=madvdontneed=1 keeps the Go runtime from returning memory to the OS
@@ -445,8 +518,9 @@ do_status() {
 
     if autostart_enabled; then as=true; else as=false; fi
     if autostart_available; then aa=true; else aa=false; fi
-    printf '{"running":%s,"installed":%s,"state":"%s","version":"%s","arch":"%s","port":%s,"downloadedBytes":%s,"totalBytes":%s,"dataDir":"%s","autostart":%s,"autostartAvailable":%s}\n' \
-        "$r" "$ins" "$st" "$ver" "$arch" "$PORT" "$dlb" "$tot" "$DATA_DIR" "$as" "$aa"
+    cp=$(cache_path)
+    printf '{"running":%s,"installed":%s,"state":"%s","version":"%s","arch":"%s","port":%s,"downloadedBytes":%s,"totalBytes":%s,"dataDir":"%s","cachePath":"%s","autostart":%s,"autostartAvailable":%s}\n' \
+        "$r" "$ins" "$st" "$ver" "$arch" "$PORT" "$dlb" "$tot" "$DATA_DIR" "$cp" "$as" "$aa"
 }
 
 case "${1:-}" in
@@ -458,6 +532,9 @@ case "${1:-}" in
     status)   do_status ;;
     logs)     tail -n "${2:-200}" "$LOG" 2>/dev/null ;;
     datadir)  echo "$DATA_DIR" ;;
+    cache)    cache_path ;;
+    list-usb) list_usb ;;
+    set-storage) echo "${2:-}" >"$WANTCACHEFILE" 2>/dev/null; spawn_bg _set_storage ;;
     latest)   do_latest ;;
     versions) do_versions ;;
     select-version) echo "${2:-}" >"$WANTVERFILE" 2>/dev/null; spawn_bg _install_version ;;
@@ -468,5 +545,6 @@ case "${1:-}" in
     _restart) TS_QUIET=1; set_state "restarting"; do_stop; do_start ;;
     _update)  TS_QUIET=1; set_state "updating"; do_stop; do_install && do_start ;;
     _install_version) TS_QUIET=1; set_state "downloading"; do_stop; do_install "$(cat "$WANTVERFILE" 2>/dev/null)" && do_start ;;
-    *) echo "usage: $0 {install|start|stop|restart|update|status|logs|datadir|latest|versions|select-version|enable-autostart|disable-autostart}"; exit 1 ;;
+    _set_storage) TS_QUIET=1; set_cache "$(cat "$WANTCACHEFILE" 2>/dev/null)"; if is_running; then set_state "restarting"; do_stop; do_start; else set_state "stopped"; fi ;;
+    *) echo "usage: $0 {install|start|stop|restart|update|status|logs|datadir|cache|list-usb|set-storage|latest|versions|select-version|enable-autostart|disable-autostart}"; exit 1 ;;
 esac

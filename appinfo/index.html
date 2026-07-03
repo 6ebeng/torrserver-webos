@@ -22,12 +22,13 @@
         <main>
             <section class="card">
                 <div class="row"><span class="k">Status</span><span id="state" class="v">checking&hellip;</span></div>
-                <div class="row"><span class="k">App Version</span><span id="appversion" class="v">1.1.21</span></div>
+                <div class="row"><span class="k">App Version</span><span id="appversion" class="v">1.1.22</span></div>
                 <div class="row"><span class="k">Server Version</span><span class="v"><span id="version">&mdash;</span>
                         <span id="updatebadge" class="pill hidden">Update available</span></span></div>
                 <div class="row"><span class="k">Architecture</span><span id="arch" class="v">&mdash;</span></div>
                 <div class="row"><span class="k">Autostart</span><span id="autostart" class="v">&mdash;</span></div>
                 <div class="row"><span class="k">Data directory</span><span id="datadir" class="v">&mdash;</span></div>
+                <div class="row"><span class="k">Cache storage</span><span id="storage" class="v">&mdash;</span></div>
                 <div class="row"><span class="k">Access URL</span><span id="urls" class="v">&mdash;</span></div>
             </section>
 
@@ -37,6 +38,7 @@
                 <button id="btnRestart" class="btn">Restart</button>
                 <button id="btnUpdate" class="btn">Update server</button>
                 <button id="btnSelectVersion" class="btn">Select version</button>
+                <button id="btnStorage" class="btn">Cache storage</button>
                 <button id="btnAutostart" class="btn">Autostart: On</button>
                 <button id="btnOpen" class="btn">Open Web UI</button>
                 <button id="btnLampa" class="btn hidden">Lampa</button>
@@ -57,8 +59,8 @@
 
     <div id="vpicker" class="overlay hidden">
         <div class="dialog">
-            <div class="dialog-title">Select TorrServer version</div>
-            <div class="dialog-sub">Pick a release to install. Use this to downgrade if the latest build has issues.
+            <div class="dialog-title" id="dlgTitle">Select TorrServer version</div>
+            <div class="dialog-sub" id="dlgSub">Pick a release to install. Use this to downgrade if the latest build has issues.
             </div>
             <div id="vlist" class="vlist">Loading&hellip;</div>
             <div class="dialog-actions">

@@ -21,6 +21,9 @@
 	var hookOn = false; // boot hook present (managed by us via hbchannel exec)
 	var hookKnown = false; // hookOn has been read at least once
 	var pickerOpen = false;
+	var pickerReturnId = 'btnSelectVersion'; // button to refocus when the picker closes
+	var pickerMode = 'version'; // 'version' | 'storage'
+	var storageCurrent = ''; // current torrent-cache path ('' = internal RAM)
 	var currentVersion = '';
 	var updateAvailable = false; // a newer TorrServer release is available to install
 	var lastStatus = {}; // most recent status, so button state can be recomputed any time
@@ -151,6 +154,7 @@
 		setBtnDisabled($('btnStop'), !running || busy);
 		setBtnDisabled($('btnRestart'), !running || busy);
 		setBtnDisabled($('btnSelectVersion'), busy);
+		setBtnDisabled($('btnStorage'), busy);
 		setBtnDisabled($('btnOpen'), !running || !firstUrl);
 		setBtnDisabled($('btnUpdate'), !updateAvailable || busy);
 		setBtnDisabled($('btnAutostart'), !autostartAvailable || autostartBusy || busy);
@@ -160,7 +164,7 @@
 		else removeClass($('btnUpdate'), 'attention');
 
 		// Pulse the pressed button (and the autostart toggle while it works).
-		var ids = ['btnStart', 'btnStop', 'btnRestart', 'btnUpdate', 'btnAutostart', 'btnSelectVersion'];
+		var ids = ['btnStart', 'btnStop', 'btnRestart', 'btnUpdate', 'btnAutostart', 'btnSelectVersion', 'btnStorage'];
 		for (var i = 0; i < ids.length; i++) removeClass($(ids[i]), 'loading');
 		if (busy && pendingBtnId) addClass($(pendingBtnId), 'loading');
 		if (autostartBusy) addClass($('btnAutostart'), 'loading');
@@ -229,6 +233,9 @@
 		}
 		$('arch').textContent = s.arch || '—';
 		$('datadir').textContent = s.dataDir || '—';
+		// Torrent cache location: empty means the internal in-RAM cache.
+		storageCurrent = s.cachePath || '';
+		$('storage').textContent = storageCurrent ? 'USB: ' + storageCurrent : 'Internal (RAM cache)';
 		// Autostart status. On a rooted TV we manage the boot hook ourselves via
 		// the Homebrew Channel (root exec), which works whether or not our service
 		// is elevated. Fall back to the service's own view until root is probed.
@@ -465,6 +472,10 @@
 
 	function openVersionPicker() {
 		pickerOpen = true;
+		pickerMode = 'version';
+		pickerReturnId = 'btnSelectVersion';
+		$('dlgTitle').textContent = 'Select TorrServer version';
+		$('dlgSub').textContent = 'Pick a release to install. Use this to downgrade if the latest build has issues.';
 		$('vpicker').className = 'overlay';
 		$('vlist').textContent = 'Loading…';
 		$('btnVCancel').focus();
@@ -485,7 +496,7 @@
 		pickerOpen = false;
 		$('vpicker').className = 'overlay hidden';
 		var btns = visibleButtons();
-		var sel = $('btnSelectVersion');
+		var sel = $(pickerReturnId);
 		if (sel && btns.indexOf(sel) !== -1) sel.focus();
 		else if (btns.length) btns[0].focus();
 	}
@@ -500,6 +511,92 @@
 		svc('selectVersion', { version: tag }, poll);
 		closeVersionPicker();
 		setTimeout(checkUpdate, 60000);
+	}
+
+	// Human-readable free space for the storage picker.
+	function fmtBytes(n) {
+		if (!n || n < 0) return '';
+		var u = ['B', 'KB', 'MB', 'GB', 'TB'];
+		var i = 0;
+		while (n >= 1024 && i < u.length - 1) {
+			n = n / 1024;
+			i++;
+		}
+		return (i >= 2 ? n.toFixed(1) : Math.round(n)) + ' ' + u[i];
+	}
+
+	function renderStorage(usb, current) {
+		var list = $('vlist');
+		list.innerHTML = '';
+		// Internal (RAM) is always available and listed first, then each USB drive.
+		var options = [{ path: '', label: 'Internal (RAM cache)', free: 0 }];
+		for (var i = 0; i < usb.length; i++) {
+			options.push({ path: usb[i].path, label: 'USB: ' + usb[i].path, free: usb[i].free });
+		}
+		for (var j = 0; j < options.length; j++) {
+			(function (o) {
+				// A chosen USB cache lives in a torrserver-cache/ subfolder, so match
+				// on prefix to flag the drive currently in use.
+				var inUse = o.path ? current.indexOf(o.path) === 0 : current === '';
+				var b = document.createElement('button');
+				b.className = 'vitem' + (inUse ? ' current' : '');
+				var chips = '';
+				if (inUse) chips += '<span class="chip-note installed">in use</span>';
+				if (o.free) chips += '<span class="chip-note latest">' + fmtBytes(o.free) + ' free</span>';
+				b.innerHTML = escapeHtml(o.label) + (chips ? '<span class="tag-notes">' + chips + '</span>' : '');
+				b.onclick = function () {
+					chooseStorage(o.path);
+				};
+				list.appendChild(b);
+			})(options[j]);
+		}
+		var items = pickerItems();
+		if (items.length) items[0].focus();
+	}
+
+	function openStoragePicker() {
+		pickerOpen = true;
+		pickerMode = 'storage';
+		pickerReturnId = 'btnStorage';
+		$('dlgTitle').textContent = 'Torrent cache storage';
+		$('dlgSub').textContent = 'Store the torrent cache/downloads on a USB drive to save internal space. TorrServer itself stays on internal storage.';
+		$('vpicker').className = 'overlay';
+		$('vlist').textContent = 'Loading…';
+		$('btnVCancel').focus();
+		svc(
+			'listStorage',
+			{},
+			function (r) {
+				if (!pickerOpen) return;
+				var usb = (r && r.usb) || [];
+				var cur = (r && r.current) || '';
+				if (!usb.length) {
+					$('vlist').textContent = 'No USB drive detected — plug one into the TV and try again. The cache stays on internal storage (RAM) for now.';
+					return;
+				}
+				renderStorage(usb, cur);
+			},
+			function () {
+				$('vlist').textContent = 'Could not read storage — please try again.';
+			}
+		);
+	}
+
+	function chooseStorage(path) {
+		// Compare against the drive currently in use (the cache lives in a subfolder).
+		var same = path ? storageCurrent.indexOf(path) === 0 : storageCurrent === '';
+		if (same) {
+			closeVersionPicker();
+			return;
+		}
+		var running = lastStatus.running === true;
+		var where = path ? 'USB' : 'internal RAM cache';
+		var m = running
+			? 'Moving the torrent cache to ' + where + '… TorrServer will restart.'
+			: 'Cache set to ' + where + '. It will be used next time you start TorrServer.';
+		beginAction('btnStorage', m, running);
+		svc('setStorage', { path: path }, poll);
+		closeVersionPicker();
 	}
 
 	function wire() {
@@ -533,6 +630,10 @@
 		$('btnSelectVersion').onclick = function () {
 			if (isDisabled($('btnSelectVersion'))) return;
 			openVersionPicker();
+		};
+		$('btnStorage').onclick = function () {
+			if (isDisabled($('btnStorage'))) return;
+			openStoragePicker();
 		};
 		$('btnVCancel').onclick = closeVersionPicker;
 		$('btnAutostart').onclick = function () {

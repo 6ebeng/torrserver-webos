@@ -19,7 +19,9 @@
 				{ "name": "autostart", "description": "Boot hook entry point (starts TorrServer)" },
 				{ "name": "launchLampa", "description": "Launch the Lampa app if installed" },
 				{ "name": "launchMediaPlayer", "description": "Launch the TV media player (Photo/Video or MediaPlayer)" },
-				{ "name": "getDeviceInfo", "description": "Return the TV firmware and webOS version" }
+				{ "name": "getDeviceInfo", "description": "Return the TV firmware and webOS version" },
+				{ "name": "listStorage", "description": "List USB storage for the torrent cache and the current cache path" },
+				{ "name": "setStorage", "description": "Set the torrent cache/downloads location (USB path or internal RAM)" }
 			]
 		}
 	]
