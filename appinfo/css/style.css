@@ -122,12 +122,23 @@ main > *:last-child { margin-bottom: 0; }
   50%      { box-shadow: 0 0 0 5px rgba(224, 149, 42, 0.55); }
 }
 
-#logwrap { flex: 1; overflow: auto; min-height: 0; padding: 18px; }
+/* Logs shown in a modal overlay (see .overlay/.dialog). The .logwrap scrolls. */
+.logwrap {
+  max-height: 620px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 18px;
+  margin-bottom: 24px;
+  background: #0f1713;
+  border: 1px solid #26342c;
+  border-radius: 12px;
+}
 #logs {
   font-family: "Courier New", monospace;
   font-size: 22px;
   line-height: 1.4;
   white-space: pre-wrap;
+  word-break: break-all;
   color: #b9cabf;
 }
 
@@ -160,6 +171,7 @@ footer b { color: #cdded4; }
   padding: 32px;
   overflow: hidden;
 }
+.dialog.wide { width: 1200px; }
 .dialog-title { font-size: 34px; font-weight: 700; margin-bottom: 8px; }
 .dialog-sub { font-size: 22px; color: #8ca397; margin-bottom: 24px; }
 /* Old webOS (Chromium ~38) does not reliably shrink a flex:1 child, so instead

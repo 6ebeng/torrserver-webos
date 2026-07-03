@@ -22,7 +22,7 @@
         <main>
             <section class="card">
                 <div class="row"><span class="k">Status</span><span id="state" class="v">checking&hellip;</span></div>
-                <div class="row"><span class="k">App Version</span><span id="appversion" class="v">1.1.23</span></div>
+                <div class="row"><span class="k">App Version</span><span id="appversion" class="v">1.1.24</span></div>
                 <div class="row"><span class="k">Server Version</span>
                     <span class="rowend">
                         <span class="v"><span id="version">&mdash;</span> <span id="updatebadge" class="pill hidden">Update available</span></span>
@@ -36,13 +36,13 @@
                         <button id="btnAutostart" class="btn rowbtn">Autostart: On</button>
                     </span>
                 </div>
-                <div class="row"><span class="k">Data directory</span>
+                <div class="row"><span class="k">Data directory</span><span id="datadir" class="v">&mdash;</span></div>
+                <div class="row"><span class="k">Cache storage</span>
                     <span class="rowend">
-                        <span id="datadir" class="v">&mdash;</span>
-                        <button id="btnStorage" class="btn rowbtn">Cache storage</button>
+                        <span id="storage" class="v">&mdash;</span>
+                        <button id="btnStorage" class="btn rowbtn">Change</button>
                     </span>
                 </div>
-                <div class="row"><span class="k">Cache storage</span><span id="storage" class="v">&mdash;</span></div>
                 <div class="row"><span class="k">Access URL</span><span id="urls" class="v">&mdash;</span></div>
             </section>
 
@@ -55,10 +55,6 @@
                 <button id="btnLampa" class="btn hidden">Lampa</button>
                 <button id="btnMedia" class="btn">MediaPlayer</button>
                 <button id="btnLogs" class="btn">Logs</button>
-            </section>
-
-            <section id="logwrap" class="card hidden">
-                <pre id="logs"></pre>
             </section>
         </main>
 
@@ -76,6 +72,18 @@
             <div id="vlist" class="vlist">Loading&hellip;</div>
             <div class="dialog-actions">
                 <button id="btnVCancel" class="btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="logmodal" class="overlay hidden">
+        <div class="dialog wide">
+            <div class="dialog-title">TorrServer logs</div>
+            <div id="logwrap" class="logwrap">
+                <pre id="logs">Loading&hellip;</pre>
+            </div>
+            <div class="dialog-actions">
+                <button id="btnLogClose" class="btn">Close</button>
             </div>
         </div>
     </div>

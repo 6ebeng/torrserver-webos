@@ -404,12 +404,21 @@
 
 	function toggleLogs() {
 		logsVisible = !logsVisible;
-		$('logwrap').className = 'card' + (logsVisible ? '' : ' hidden');
+		$('logmodal').className = 'overlay' + (logsVisible ? '' : ' hidden');
 		if (logsVisible) {
 			$('logs').textContent = 'Loading…';
+			$('btnLogClose').focus();
 			svc('getLogs', { lines: LOG_LINES }, function (r) {
+				if (!logsVisible) return;
 				$('logs').textContent = r && r.log ? r.log : '(log is empty)';
+				var w = $('logwrap');
+				w.scrollTop = w.scrollHeight;
 			});
+		} else {
+			var lb = $('btnLogs');
+			var btns = visibleButtons();
+			if (lb && btns.indexOf(lb) !== -1) lb.focus();
+			else if (btns.length) btns[0].focus();
 		}
 	}
 
@@ -659,6 +668,7 @@
 			}
 		};
 		$('btnLogs').onclick = toggleLogs;
+		$('btnLogClose').onclick = toggleLogs;
 		$('btnLampa').onclick = function () {
 			msg('Launching Lampa…');
 			var id = lampaAppId || LAMPA_FALLBACK_ID;
@@ -913,6 +923,22 @@
 				}
 				return;
 			}
+			// While the logs modal is open it captures navigation: up/down scroll
+			// the log, Back/Escape close it.
+			if (logsVisible) {
+				var lw = $('logwrap');
+				if (k === 38) {
+					lw.scrollTop -= 90;
+					e.preventDefault();
+				} else if (k === 40) {
+					lw.scrollTop += 90;
+					e.preventDefault();
+				} else if (k === 461 || k === 27 || k === 8) {
+					toggleLogs();
+					e.preventDefault();
+				}
+				return;
+			}
 			if (k === 37 || k === 39) {
 				var btns = visibleButtons();
 				if (!btns.length) return;
@@ -922,11 +948,6 @@
 				else idx = (idx + 1) % btns.length;
 				btns[idx].focus();
 				e.preventDefault();
-			} else if (k === 461 || k === 27) {
-				if (logsVisible) {
-					toggleLogs();
-					e.preventDefault();
-				}
 			}
 		});
 	}
