@@ -615,9 +615,7 @@
 		}
 		var running = lastStatus.running === true;
 		var where = path ? 'USB' : 'internal RAM cache';
-		var m = running
-			? 'Moving the torrent cache to ' + where + '… TorrServer will restart.'
-			: 'Cache set to ' + where + '. It will be used next time you start TorrServer.';
+		var m = running ? 'Moving the torrent cache to ' + where + '… TorrServer will restart.' : 'Cache set to ' + where + '. It will be used next time you start TorrServer.';
 		beginAction('btnStorage', m, running);
 		svc('setStorage', { path: path }, poll);
 		closeVersionPicker();

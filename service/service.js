@@ -42,8 +42,29 @@ try {
 	/* ignore */
 }
 
+// Spawn a child process without ever throwing.
+//
+// When the app is installed WITHOUT Homebrew elevation (plain Developer Mode /
+// webOS Dev Manager, or any unrooted TV) this service runs inside a jail that
+// forbids executing some binaries - notably `luna-send`. On the old Node 0.12
+// runtime child_process.execFile reports that as a SYNCHRONOUS `throw` ( Error:
+// spawn EACCES ), not as a callback error. An uncaught throw kills the whole
+// service process, so every in-flight Luna call dies unanswered and the app is
+// left showing "checking status" forever. Routing the failure to the callback
+// keeps the service alive and lets each method degrade gracefully.
+function safeExecFile(file, args, opts, cb) {
+	try {
+		return child.execFile(file, args, opts, cb);
+	} catch (e) {
+		setTimeout(function () {
+			cb(e, '', String((e && e.message) || e));
+		}, 0);
+		return null;
+	}
+}
+
 function runScript(args, timeoutMs, cb) {
-	child.execFile('sh', [SCRIPT].concat(args), { timeout: timeoutMs || 0, maxBuffer: 4 * 1024 * 1024 }, function (err, stdout, stderr) {
+	safeExecFile('sh', [SCRIPT].concat(args), { timeout: timeoutMs || 0, maxBuffer: 4 * 1024 * 1024 }, function (err, stdout, stderr) {
 		cb(err, String(stdout || ''), String(stderr || ''));
 	});
 }
@@ -78,7 +99,7 @@ function lampaInstalled() {
 }
 
 function lunaSend(uri, payload, cb) {
-	child.execFile('luna-send', ['-n', '1', '-f', uri, JSON.stringify(payload || {})], { timeout: 10000 }, function () {
+	safeExecFile('luna-send', ['-n', '1', '-f', uri, JSON.stringify(payload || {})], { timeout: 10000 }, function () {
 		if (cb) cb();
 	});
 }
@@ -221,45 +242,52 @@ service.register('launchLampa', function (message) {
 
 service.register('launchMediaPlayer', function (message) {
 	// webOS < 6 exposes the media player as "Photo/Video" (photovideo); webOS 6+
-	// renamed it to "MediaPlayer" (mediadiscovery). Pick by the SDK major version.
-	child.execFile('luna-send', ['-n', '1', '-f', 'luna://com.webos.service.tv.systemproperty/getSystemInfo', '{"keys":["sdkVersion"]}'], { timeout: 10000 }, function (err, stdout) {
-		var major = 0;
-		try {
-			var j = JSON.parse(String(stdout || '{}'));
-			major = parseInt(String(j.sdkVersion || '0').split('.')[0], 10) || 0;
-		} catch (e) {
-			/* default to legacy id */
-		}
-		var appId = major >= 6 ? 'com.webos.app.mediadiscovery' : 'com.webos.app.photovideo';
-		lunaSend('luna://com.webos.applicationManager/launch', { id: appId }, function () {
-			message.respond({ returnValue: true, launched: true, app: appId });
-		});
+	// renamed it to "MediaPlayer" (mediadiscovery). Pick by the major version,
+	// read from the nyx info file (no subprocess, so it works jailed too).
+	var major = parseInt(String(readDeviceInfo().webosVersion || '0').split('.')[0], 10) || 0;
+	var appId = major >= 6 ? 'com.webos.app.mediadiscovery' : 'com.webos.app.photovideo';
+	lunaSend('luna://com.webos.applicationManager/launch', { id: appId }, function () {
+		message.respond({ returnValue: true, launched: true, app: appId });
 	});
 });
 
-// Report the TV's firmware and webOS (SDK) version so the header can show them.
-// firmwareVersion looks like "05.50.00"; sdkVersion is the webOS version, e.g.
-// "4.10.0". Works on every webOS version (this systemproperty key set is old).
+// Report the TV's firmware and webOS version so the header can show them.
+//
+// These come straight from the nyx info files, which are world-readable, so this
+// works even when the service is jailed (unrooted / non-elevated install). We
+// deliberately do NOT shell out to luna-send here: a jail forbids executing it,
+// which used to crash the whole service. Values never change at runtime, so the
+// result is read once and cached.
+var deviceInfoCache = null;
+
+function readDeviceInfo() {
+	if (deviceInfoCache) return deviceInfoCache;
+	var info = { firmwareVersion: '', webosVersion: '', modelName: '' };
+	try {
+		var oi = JSON.parse(fs.readFileSync('/var/run/nyx/os_info.json', 'utf8'));
+		info.firmwareVersion = String(oi.webos_manufacturing_version || '');
+		info.webosVersion = String(oi.webos_release || '');
+	} catch (e) {
+		/* not a TV / file missing */
+	}
+	try {
+		var di = JSON.parse(fs.readFileSync('/var/run/nyx/device_info.json', 'utf8'));
+		info.modelName = String(di.product_id || '');
+	} catch (e) {
+		/* not a TV / file missing */
+	}
+	if (info.firmwareVersion || info.webosVersion || info.modelName) deviceInfoCache = info;
+	return info;
+}
+
 service.register('getDeviceInfo', function (message) {
-	child.execFile(
-		'luna-send',
-		['-n', '1', '-f', 'luna://com.webos.service.tv.systemproperty/getSystemInfo', '{"keys":["firmwareVersion","sdkVersion","modelName"]}'],
-		{ timeout: 10000 },
-		function (err, stdout) {
-			var fw = '',
-				os = '',
-				model = '';
-			try {
-				var j = JSON.parse(String(stdout || '{}'));
-				fw = String(j.firmwareVersion || '');
-				os = String(j.sdkVersion || '');
-				model = String(j.modelName || '');
-			} catch (e) {
-				/* leave blank on parse failure */
-			}
-			message.respond({ returnValue: true, firmwareVersion: fw, webosVersion: os, modelName: model });
-		}
-	);
+	var info = readDeviceInfo();
+	message.respond({
+		returnValue: true,
+		firmwareVersion: info.firmwareVersion,
+		webosVersion: info.webosVersion,
+		modelName: info.modelName
+	});
 });
 
 // List USB storage the torrent disk-cache can use, plus the current cache path.
@@ -328,4 +356,19 @@ process.on('SIGTERM', function () {
 });
 process.on('SIGINT', function () {
 	process.exit(0);
+});
+
+// Last-resort guard: never let one failing call take the whole service down.
+//
+// If the process dies mid-request, every in-flight Luna call goes unanswered and
+// the app hangs on "checking status" until the TV is rebooted - a far worse
+// outcome than one method returning nothing. Staying alive lets the next poll
+// succeed. (This caught a real case: a jailed service throwing "spawn EACCES"
+// because it is not allowed to execute luna-send.)
+process.on('uncaughtException', function (e) {
+	try {
+		console.error('uncaught exception (service kept alive): ' + ((e && e.stack) || e));
+	} catch (e2) {
+		/* ignore */
+	}
 });
