@@ -6,20 +6,20 @@
 #              datadir | latest | versions | select-version | enable-autostart |
 #              disable-autostart
 #
-# It auto-detects a writable + exec-capable data directory, downloads the
-# matching self-contained TorrServer build (a single static Go binary) from
-# GitHub on first run, and supervises the process via a pid file. Because the
-# TorrServer release artifacts are statically linked, no extra runtime
-# libraries are needed - download, chmod, run.
+# It auto-detects a writable + exec-capable data directory, installs the
+# bundled TorrServer binary (a single static Go build shipped inside the IPK,
+# so nothing is downloaded at runtime), and supervises the process via a pid
+# file. Because the TorrServer binary is statically linked, no extra runtime
+# libraries are needed - install, chmod, run.
 #
 set -u
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
 PORT=8090
-REPO="YouROK/TorrServer"
-API_URL="https://api.github.com/repos/$REPO/releases/latest"
-RELEASES_URL="https://api.github.com/repos/$REPO/releases?per_page=100"
-UA="torrserver-webos"
+# The TorrServer binary is bundled with the app (see build.ps1) - there is no
+# runtime download, so no GitHub API, no checksum-less fetch, and no fragile
+# dependence on upstream release asset names.
+BUNDLED_BIN="$SCRIPT_DIR/bin/TorrServer"
 AUTOSTART_SRC="$SCRIPT_DIR/torrserver-autostart"
 AUTOSTART_DST="/var/lib/webosbrew/init.d/torrserver"
 # App icon shown on toast notifications. The service lives in .../services/<id>
@@ -65,32 +65,25 @@ PIDFILE="$DATA_DIR/torrserver.pid"
 STATEFILE="$DATA_DIR/state"
 VERFILE="$DATA_DIR/version"
 BIN="$APP_DIR/TorrServer"
-PART="$DATA_DIR/torrserver.part"
-TOTALFILE="$DATA_DIR/total"
-ARCHFILE="$DATA_DIR/arch"
-LATESTFILE="$DATA_DIR/latest"
-VERSIONSFILE="$DATA_DIR/versions"
-WANTVERFILE="$DATA_DIR/.want_version"
-AUTOSTART_INIT="$DATA_DIR/.autostart_init"
 SETTINGS_FILE="$DATA_SUB/settings.json"
 CACHEFILE="$DATA_DIR/.cache_path"
 WANTCACHEFILE="$DATA_DIR/.want_cache"
+ACCS_FILE="$DATA_SUB/accs.db"
 mkdir -p "$DATA_DIR" "$APP_DIR" "$DATA_SUB" "$DATA_DIR/tmp" 2>/dev/null
 
 set_state() { echo "$1" >"$STATEFILE" 2>/dev/null; }
 
 # The boot hook lives on the host filesystem under /var/lib/webosbrew and is run
-# as root at startup. Reading/writing it therefore requires the service to run
-# elevated (root, un-jailed). The Homebrew Channel grants this at install time
-# because the app manifest sets "rootRequired": true, so a plain filesystem
-# check/copy/remove is all that is needed here.
+# as root at startup. Writing or removing it requires root, which the app gets
+# by asking the Homebrew Channel's exec service (the frontend manages the hook).
+# Autostart is OFF by default and only enabled when the user explicitly toggles
+# it on - nothing here enables it automatically.
 autostart_enabled() { [ -f "$AUTOSTART_DST" ]; }
 
-# Whether autostart can actually be toggled on this TV. It only works when the
-# service runs elevated (root, un-jailed) on a rooted/Homebrew TV, so that it
-# can write the boot hook. A jailed service (uid != 0) or a TV without the
-# webosbrew init.d directory cannot persist the hook, so the UI greys the
-# Autostart button out in that case.
+# Whether autostart can actually be toggled on this TV. Writing the boot hook
+# requires root on a rooted/Homebrew TV, so a jailed service (uid != 0) or a TV
+# without the webosbrew init.d directory cannot persist the hook, and the UI
+# greys the Autostart button out in that case.
 autostart_available() {
     [ "$(id -u 2>/dev/null)" = "0" ] || return 1
     _ad=$(dirname "$AUTOSTART_DST")
@@ -121,104 +114,9 @@ spawn_bg() {
     fi
 }
 
-# Map the kernel/userspace architecture onto a TorrServer release asset suffix.
-# LG webOS commonly reports a 64-bit aarch64 kernel while running a 32-bit ARM
-# userspace, so we only pick arm64 when /bin/sh is itself a 64-bit ELF (5th byte
-# of the ELF header: 01 = 32-bit, 02 = 64-bit). arm7 is the safe default.
-detect_arch() {
-    m=$(uname -m 2>/dev/null)
-    case "$m" in
-        x86_64|amd64)        echo "amd64"; return 0 ;;
-        i?86|x86)            echo "386";   return 0 ;;
-        armv7l|armv7|armhf)  echo "arm7";  return 0 ;;
-        armv6l|armv5l|armv5|armel) echo "arm5"; return 0 ;;
-        aarch64|arm64)
-            cls=$(od -An -tx1 -N5 /bin/sh 2>/dev/null | tr -d ' \n' | cut -c9-10)
-            if [ "$cls" = "02" ]; then echo "arm64"; else echo "arm7"; fi
-            return 0 ;;
-        armv*) echo "arm7"; return 0 ;;
-    esac
-    echo "arm7"
-}
-
-# download <url> <dest>  -> tries curl, then wget, then the Node fallback.
-# Timeouts abort only on a stalled connection (not on a slow-but-progressing
-# large download), so a flaky network can never wedge us on "downloading".
-download() {
-    _u="$1"; _d="$2"
-    if command -v curl >/dev/null 2>&1; then
-        curl -fL --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
-             --retry 3 --retry-delay 3 -A "$UA" -o "$_d" "$_u" && return 0
-    fi
-    if command -v wget >/dev/null 2>&1; then
-        wget -q -T 60 -O "$_d" "$_u" && return 0
-    fi
-    if command -v node >/dev/null 2>&1; then
-        node "$SCRIPT_DIR/download.js" "$_u" "$_d" && return 0
-    fi
-    return 1
-}
-
-# remote_size <url> -> best-effort Content-Length of a remote file, printed as a
-# plain integer (empty on failure). Used by the manual version picker, whose
-# direct download endpoint has no API "size" field, so the UI can still show a
-# percentage instead of a bare byte counter.
-remote_size() {
-    _u="$1"
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsIL --connect-timeout 15 -A "$UA" "$_u" 2>/dev/null \
-            | grep -i '^content-length:' | tail -n1 | tr -dc '0-9'
-        return 0
-    fi
-    if command -v wget >/dev/null 2>&1; then
-        wget -q -S --spider -T 15 "$_u" 2>&1 \
-            | grep -i 'content-length:' | tail -n1 | tr -dc '0-9'
-        return 0
-    fi
-}
-
-# Fetch the latest release tag from GitHub and cache it. Returns the cached
-# value immediately if checked within the last hour, so polling stays cheap.
-do_latest() {
-    if [ -f "$LATESTFILE" ]; then
-        _age=$(( $(date +%s) - $(date -r "$LATESTFILE" +%s 2>/dev/null || echo 0) ))
-        if [ "$_age" -lt 3600 ]; then cat "$LATESTFILE"; return 0; fi
-    fi
-    _j="$DATA_DIR/release-check.json"
-    if download "$API_URL" "$_j"; then
-        _v=$(grep -o '"tag_name"[ ]*:[ ]*"[^"]*"' "$_j" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
-        rm -f "$_j" 2>/dev/null
-        if [ -n "$_v" ]; then echo "$_v" >"$LATESTFILE"; echo "$_v"; return 0; fi
-    fi
-    cat "$LATESTFILE" 2>/dev/null
-}
-
-# List the available release tags from GitHub (newest first), one per line, so
-# the UI can offer a manual version picker for downgrades / compatibility fixes.
-# Cached for an hour to keep repeated opens of the picker cheap.
-do_versions() {
-    if [ -f "$VERSIONSFILE" ]; then
-        _age=$(( $(date +%s) - $(date -r "$VERSIONSFILE" +%s 2>/dev/null || echo 0) ))
-        if [ "$_age" -lt 3600 ]; then cat "$VERSIONSFILE"; return 0; fi
-    fi
-    _j="$DATA_DIR/releases.json"
-    if download "$RELEASES_URL" "$_j"; then
-        # Every release object carries exactly one "tag_name" and one
-        # "prerelease" flag, in the same order, so extract both lists and pair
-        # them line-for-line as "tag<TAB>true|false". This lets the UI label
-        # pre-releases and pick the newest STABLE release as "latest".
-        grep -oE '"tag_name"[ ]*:[ ]*"[^"]*"' "$_j" | sed 's/.*"\([^"]*\)"$/\1/' > "$_j.tags"
-        grep -oE '"prerelease"[ ]*:[ ]*(true|false)' "$_j" | sed 's/.*:[ ]*//' > "$_j.pre"
-        _tags=$(awk 'NR==FNR{p[FNR]=$0; next}{printf "%s\t%s\n", $0, (p[FNR]=="" ? "false" : p[FNR])}' "$_j.pre" "$_j.tags")
-        rm -f "$_j" "$_j.tags" "$_j.pre" 2>/dev/null
-        if [ -n "$_tags" ]; then
-            printf '%s\n' "$_tags" >"$VERSIONSFILE"
-            cat "$VERSIONSFILE"
-            return 0
-        fi
-    fi
-    cat "$VERSIONSFILE" 2>/dev/null
-}
+# webOS userspace is 32-bit ARM on every TV, and the TorrServer binary is
+# bundled with the app, so there is exactly one architecture to care about:
+ARCH="arm7"
 
 # Is TorrServer alive?  We deliberately avoid "pgrep -f <binary path>": the path
 # is part of pgrep's own argv, so when the UI polls status every 2s two pgrep
@@ -243,61 +141,18 @@ is_running() {
     return 1
 }
 
-# do_install [version]  -> installs the latest release, or a specific release tag
-# when a version is given (manual downgrade / compatibility pick).
+# Install the bundled TorrServer binary into the data dir. The binary ships
+# inside the IPK (see build.ps1), so this is a local copy - nothing is fetched
+# from the network and the bytes are the exact ones verified at build time.
 do_install() {
-    arch=$(detect_arch)
-    asset="TorrServer-linux-$arch"
-    _want="${1:-}"
-    [ "${TS_QUIET:-}" = 1 ] || set_state "downloading"
-    json="$DATA_DIR/release.json"
-    rm -f "$PART" "$TOTALFILE" 2>/dev/null
-
-    if [ -n "$_want" ]; then
-        # Manual version pick: the release asset URL is predictable, so download
-        # the requested tag straight from the releases download endpoint without
-        # hitting (and being rate-limited by) the GitHub API.
-        url="https://github.com/$REPO/releases/download/$_want/$asset"
-        ver="$_want"
-        # Probe the asset size up front so the UI shows real percentage progress
-        # (the direct endpoint has no API "size" field to read).
-        total=$(remote_size "$url")
-        [ -n "$total" ] && echo "$total" >"$TOTALFILE"
-    else
-        if ! download "$API_URL" "$json"; then set_state "error:api"; return 1; fi
-
-        # The release JSON is minified. Each asset object lists "name" first and
-        # the matching "browser_download_url" last, with "size" in between - so
-        # anchor on the download URL and take the last "size" before it.
-        url=$(grep -o '"browser_download_url":"[^"]*/'"$asset"'"' "$json" | head -n1 | sed 's/.*:"//; s/"$//')
-        ver=$(grep -o '"tag_name"[ ]*:[ ]*"[^"]*"' "$json" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
-        if [ -z "$url" ]; then set_state "error:asset"; return 1; fi
-
-        prefix=$(grep -o '.*"browser_download_url":"[^"]*/'"$asset"'"' "$json" 2>/dev/null)
-        total=$(printf '%s' "$prefix" | grep -o '"size"[ ]*:[ ]*[0-9][0-9]*' | tail -n1 | grep -o '[0-9][0-9]*' | tail -n1)
-        [ -n "$total" ] && echo "$total" >"$TOTALFILE"
-    fi
-
-    # Download to a .part file so do_status can report live byte progress.
-    if ! download "$url" "$PART"; then set_state "error:download"; return 1; fi
-
-    # Guard against a captive-portal / 404 HTML page being saved as the binary:
-    # a real TorrServer build starts with the ELF magic bytes (7f 45 4c 46).
-    magic=$(od -An -tx1 -N4 "$PART" 2>/dev/null | tr -d ' \n')
-    if [ "$magic" != "7f454c46" ]; then set_state "error:download"; rm -f "$PART"; return 1; fi
-
+    [ "${TS_QUIET:-}" = 1 ] || set_state "installing"
+    if [ ! -f "$BUNDLED_BIN" ]; then set_state "error:binmissing"; return 1; fi
     mkdir -p "$APP_DIR" 2>/dev/null
-    if ! mv "$PART" "$BIN" 2>/dev/null; then set_state "error:install"; return 1; fi
+    if ! cp "$BUNDLED_BIN" "$BIN" 2>/dev/null; then set_state "error:install"; return 1; fi
     chmod +x "$BIN" 2>/dev/null
     if [ ! -x "$BIN" ]; then set_state "error:binmissing"; return 1; fi
-
-    [ -n "$ver" ] && echo "$ver" >"$VERFILE"
-    echo "$arch" >"$ARCHFILE"
-    # Free space now that the binary is installed. TorrServer ships as a single
-    # self-contained ELF (there is no archive to extract), so the only leftovers
-    # are the download scratch files: the partial download, the progress-size
-    # marker and the GitHub release metadata. Drop them all.
-    rm -f "$json" "$PART" "$TOTALFILE" "$DATA_DIR"/release*.json "$DATA_DIR"/*.part 2>/dev/null
+    # Record the bundled TorrServer version so the UI can show it.
+    echo "MatriX.142.2" >"$VERFILE" 2>/dev/null
     [ "${TS_QUIET:-}" = 1 ] || set_state "stopped"
     return 0
 }
@@ -347,9 +202,36 @@ list_usb() {
     done
 }
 
-# (Re)write TorrServer's settings.json with the TV-safe network defaults plus the
-# current cache location. A non-empty, creatable CACHEFILE path enables the
-# on-disk cache there; otherwise the small in-RAM cache is used.
+# HTTP auth. TorrServer enables Basic Auth with the -a (--httpauth) flag and
+# reads the credentials from accs.db (a JSON {"user":"pass"} map) in the config
+# dir - NOT from settings.json. We generate one stable random password per
+# install, store it in accs.db, and show it in the app so the user can log in
+# from a phone/PC on the LAN.
+http_user() { echo "torrserver"; }
+http_pass() {
+    if [ -f "$ACCS_FILE" ]; then
+        # Extract the stored password from the accs.db JSON map.
+        sed -n 's/.*"'"$(http_user)"'"[ ]*:[ ]*"\([^"]*\)".*/\1/p' "$ACCS_FILE" 2>/dev/null
+        return
+    fi
+    echo ""
+}
+
+# Create accs.db with a fresh random password if it does not exist yet.
+ensure_accs() {
+    mkdir -p "$DATA_SUB" 2>/dev/null
+    if [ -f "$ACCS_FILE" ]; then return 0; fi
+    _p=$( (dd if=/dev/urandom bs=9 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n') )
+    [ -n "$_p" ] || _p="$(date +%s)$$RANDOM"
+    printf '{"%s":"%s"}\n' "$(http_user)" "$_p" >"$ACCS_FILE" 2>/dev/null
+    chmod 600 "$ACCS_FILE" 2>/dev/null
+}
+
+# Merge our TV-safe defaults into TorrServer's settings.json WITHOUT discarding
+# anything the user configured in the web UI. We only create the file when it
+# does not exist yet, then patch just the keys we own (BitTorr network/cache),
+# leaving every other key untouched. TorrServer only reads the file when
+# StoreSettingsInJson is true, which we set on creation.
 write_settings() {
     _cp=$(cache_path)
     # Only use the USB cache if its directory is still present and writable, so a
@@ -361,7 +243,12 @@ write_settings() {
         _usedisk=false; _save=""; _csize=67108864
     fi
     mkdir -p "$DATA_SUB" 2>/dev/null
-    cat >"$SETTINGS_FILE" <<EOF
+
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        # First run: create a complete config with the TV-safe network defaults
+        # (DHT/uTP/PEX/UPnP/LPD off so they cannot exhaust the limited webOS
+        # network stack) and the chosen cache location.
+        cat >"$SETTINGS_FILE" <<EOF
 {
   "BitTorr": {
     "CacheSize": $_csize,
@@ -378,6 +265,19 @@ write_settings() {
   }
 }
 EOF
+        chmod 600 "$SETTINGS_FILE" 2>/dev/null
+        return 0
+    fi
+
+    # Later runs: patch ONLY the BitTorr keys we manage, preserving user edits.
+    _tmp="$SETTINGS_FILE.tmp"
+    awk -v usedisk="$_usedisk" -v save="$_save" -v csize="$_csize" '
+        /"UseDisk"[ ]*:/          { sub(/"UseDisk"[ ]*:[ ]*[a-z]+/, "\"UseDisk\": " usedisk) }
+        /"TorrentsSavePath"[ ]*:/ { sub(/"TorrentsSavePath"[ ]*:[ ]*"[^"]*"/, "\"TorrentsSavePath\": \"" save "\"") }
+        /"CacheSize"[ ]*:/        { sub(/"CacheSize"[ ]*:[ ]*[0-9]+/, "\"CacheSize\": " csize) }
+        { print }' "$SETTINGS_FILE" >"$_tmp" 2>/dev/null && mv "$_tmp" "$SETTINGS_FILE" 2>/dev/null
+    chmod 600 "$SETTINGS_FILE" 2>/dev/null
+    rm -f "$_tmp" 2>/dev/null
 }
 
 # Choose where the torrent cache/downloads live. Argument is a USB mount path, or
@@ -395,6 +295,10 @@ set_cache() {
     esac
     _dir="$_want/torrserver-cache"
     if ! mkdir -p "$_dir" 2>/dev/null; then echo "error:mkdir"; return 1; fi
+    # Make ONLY our dedicated cache folder writable - never touch the rest of
+    # the mounted drive (the old `chmod -R 777 /tmp/usb` world-wrote every file
+    # on the user's USB stick, which is both rude and a security problem).
+    chmod 777 "$_dir" 2>/dev/null
     if ! ( echo x >"$_dir/.tsw" ) 2>/dev/null; then echo "error:readonly"; return 1; fi
     rm -f "$_dir/.tsw" 2>/dev/null
     echo "$_dir" >"$CACHEFILE" 2>/dev/null
@@ -405,29 +309,29 @@ set_cache() {
 
 do_start() {
     if is_running; then set_state "running"; return 0; fi
-    # Reinstall if missing or if the previously installed arch no longer matches.
-    want=$(detect_arch)
-    have=$(cat "$ARCHFILE" 2>/dev/null)
-    if [ ! -x "$BIN" ] || [ "$want" != "$have" ]; then do_install || return 1; fi
+    # Install/reinstall the bundled binary if it is missing or is a different
+    # version than the one shipped in this package (e.g. after an app update).
+    _instver=$(cat "$VERFILE" 2>/dev/null)
+    if [ ! -x "$BIN" ] || [ "$_instver" != "MatriX.142.2" ]; then do_install || return 1; fi
 
     [ "${TS_QUIET:-}" = 1 ] || set_state "starting"
-    # Legacy parity: make any mounted USB storage writable for TorrServer caches.
-    chmod -R 777 /tmp/usb 2>/dev/null
 
-    # (Re)generate a TV-safe config on every start (see write_settings): disables
-    # DHT/uTP/PEX so they cannot exhaust the limited webOS network stack, and
-    # applies the chosen cache location (internal RAM by default, or a USB disk
-    # when selected and still present).
+    # Merge the TV-safe config (network defaults, cache location) without
+    # discarding any settings the user made in the web UI.
     write_settings
+    # Make sure the HTTP-auth credentials file exists (Basic Auth via -a).
+    ensure_accs
 
     cd "$APP_DIR" 2>/dev/null || { set_state "error:chdir"; return 1; }
     # GODEBUG=madvdontneed=1 keeps the Go runtime from returning memory to the OS
     # too eagerly - the same tuning the original launcher used on webOS.
+    # -a turns on HTTP Basic Auth (credentials in accs.db) so the web UI / API
+    # is not open to the whole LAN.
     nohup env -i \
         GODEBUG=madvdontneed=1 \
         PATH=/usr/bin:/bin \
         HOME="$DATA_DIR" TMPDIR="$DATA_DIR/tmp" \
-        "$BIN" -p "$PORT" -d "$DATA_SUB" >>"$LOG" 2>&1 &
+        "$BIN" -p "$PORT" -d "$DATA_SUB" -a >>"$LOG" 2>&1 &
     echo $! >"$PIDFILE"
 
     # Wait for the program to actually start SERVING (not merely exist): declare
@@ -440,14 +344,6 @@ do_start() {
         sleep 1
         if is_running && server_responding; then
             set_state "running"
-            # Autostart is ON by default: install the boot hook on the first
-            # successful start. The one-time marker (also written when the user
-            # explicitly toggles autostart) means a later "disable" is respected
-            # and we never re-enable behind the user's back.
-            if [ ! -f "$AUTOSTART_INIT" ]; then
-                enable_autostart
-                : >"$AUTOSTART_INIT" 2>/dev/null
-            fi
             ver=$(cat "$VERFILE" 2>/dev/null)
             luna-send -n 1 -f luna://com.webos.notification/createToast \
                 "{\"message\":\"TorrServer ${ver:-} is now running\",\"iconUrl\":\"$APP_ICON\"}" >/dev/null 2>&1
@@ -507,26 +403,18 @@ do_status() {
         case "$st" in running) st="stopped" ;; esac
     fi
     ver=$(cat "$VERFILE" 2>/dev/null)
-    arch=$(detect_arch)
-
-    dlb=0
-    if [ -f "$PART" ]; then dlb=$(wc -c <"$PART" 2>/dev/null | tr -d ' '); fi
-    [ -z "$dlb" ] && dlb=0
-    tot=0
-    if [ -f "$TOTALFILE" ]; then tot=$(cat "$TOTALFILE" 2>/dev/null | tr -d ' '); fi
-    [ -z "$tot" ] && tot=0
 
     if autostart_enabled; then as=true; else as=false; fi
     if autostart_available; then aa=true; else aa=false; fi
     cp=$(cache_path)
-    printf '{"running":%s,"installed":%s,"state":"%s","version":"%s","arch":"%s","port":%s,"downloadedBytes":%s,"totalBytes":%s,"dataDir":"%s","cachePath":"%s","autostart":%s,"autostartAvailable":%s}\n' \
-        "$r" "$ins" "$st" "$ver" "$arch" "$PORT" "$dlb" "$tot" "$DATA_DIR" "$cp" "$as" "$aa"
+    ensure_accs
+    printf '{"running":%s,"installed":%s,"state":"%s","version":"%s","arch":"%s","port":%s,"dataDir":"%s","cachePath":"%s","autostart":%s,"autostartAvailable":%s,"httpUser":"%s","httpPass":"%s"}\n' \
+        "$r" "$ins" "$st" "$ver" "$ARCH" "$PORT" "$DATA_DIR" "$cp" "$as" "$aa" "$(http_user)" "$(http_pass)"
 }
 
 case "${1:-}" in
     start)    spawn_bg _start ;;
     install)  spawn_bg _install ;;
-    update)   spawn_bg _update ;;
     restart)  spawn_bg _restart ;;
     stop)     do_stop ;;
     status)   do_status ;;
@@ -535,16 +423,11 @@ case "${1:-}" in
     cache)    cache_path ;;
     list-usb) list_usb ;;
     set-storage) echo "${2:-}" >"$WANTCACHEFILE" 2>/dev/null; spawn_bg _set_storage ;;
-    latest)   do_latest ;;
-    versions) do_versions ;;
-    select-version) echo "${2:-}" >"$WANTVERFILE" 2>/dev/null; spawn_bg _install_version ;;
-    enable-autostart)  enable_autostart && echo "enabled" || echo "failed"; : >"$AUTOSTART_INIT" 2>/dev/null ;;
-    disable-autostart) disable_autostart && echo "disabled" || echo "failed"; : >"$AUTOSTART_INIT" 2>/dev/null ;;
+    enable-autostart)  enable_autostart && echo "enabled" || echo "failed" ;;
+    disable-autostart) disable_autostart && echo "disabled" || echo "failed" ;;
     _start)   do_start ;;
     _install) do_install ;;
     _restart) TS_QUIET=1; set_state "restarting"; do_stop; do_start ;;
-    _update)  TS_QUIET=1; set_state "updating"; do_stop; do_install && do_start ;;
-    _install_version) TS_QUIET=1; set_state "downloading"; do_stop; do_install "$(cat "$WANTVERFILE" 2>/dev/null)" && do_start ;;
     _set_storage) TS_QUIET=1; set_cache "$(cat "$WANTCACHEFILE" 2>/dev/null)"; if is_running; then set_state "restarting"; do_stop; do_start; else set_state "stopped"; fi ;;
-    *) echo "usage: $0 {install|start|stop|restart|update|status|logs|datadir|cache|list-usb|set-storage|latest|versions|select-version|enable-autostart|disable-autostart}"; exit 1 ;;
+    *) echo "usage: $0 {install|start|stop|restart|status|logs|datadir|cache|list-usb|set-storage|enable-autostart|disable-autostart}"; exit 1 ;;
 esac

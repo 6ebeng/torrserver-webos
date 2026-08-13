@@ -2,8 +2,8 @@
  * TorrServer control service for webOS.
  *
  * This is a thin Luna-bus wrapper around torrserver-run.sh, which does the heavy
- * lifting (architecture detection, download, process supervision). Long-running
- * actions (start / install / update / restart) are launched detached and the
+ * lifting (installing the bundled binary and supervising the process). Long-
+ * running actions (start / install / restart) are launched detached and the
  * front-end polls "status" to follow progress, so Luna calls never block.
  *
  * Written in ES5 for compatibility with the older Node runtimes shipped on
@@ -149,7 +149,6 @@ function registerAsyncAction(method, scriptArg, ackKey) {
 
 registerAsyncAction('start', 'start', 'started');
 registerAsyncAction('install', 'install', 'installing');
-registerAsyncAction('update', 'update', 'updating');
 registerAsyncAction('restart', 'restart', 'restarting');
 
 service.register('stop', function (message) {
@@ -162,53 +161,6 @@ service.register('getLogs', function (message) {
 	var lines = (message.payload && message.payload.lines) || 200;
 	runScript(['logs', String(lines)], 15000, function (err, stdout) {
 		message.respond({ returnValue: true, log: stdout });
-	});
-});
-
-service.register('checkUpdate', function (message) {
-	runScript(['latest'], 20000, function (err, stdout) {
-		var latest = String(stdout || '').trim();
-		readStatus(function (data) {
-			var installed = data.version || '';
-			var avail = !!(latest && installed && latest !== installed);
-			message.respond({ returnValue: true, installed: installed, latest: latest, updateAvailable: avail });
-		});
-	});
-});
-
-// List the TorrServer release tags available upstream (newest first) so the UI
-// can offer a manual version picker for downgrades / compatibility fixes.
-service.register('listVersions', function (message) {
-	runScript(['versions'], 30000, function (err, stdout) {
-		var versions = String(stdout || '')
-			.split('\n')
-			.map(function (v) {
-				return v.replace(/^\s+|\s+$/g, '');
-			})
-			.filter(function (v) {
-				return v.length > 0;
-			})
-			.map(function (line) {
-				// Each line is "tag<TAB>true|false"; older cached files may hold
-				// a bare tag, which we treat as a stable (non-prerelease) build.
-				var parts = line.split('\t');
-				return { tag: parts[0], prerelease: parts[1] === 'true' };
-			});
-		message.respond({ returnValue: true, versions: versions });
-	});
-});
-
-// Install a specific TorrServer release (manual downgrade / version pin). The
-// control script self-backgrounds the download+restart, so we ack immediately
-// and the front-end follows progress by polling "status".
-service.register('selectVersion', function (message) {
-	var version = (message.payload && message.payload.version) || '';
-	if (!version) {
-		message.respond({ returnValue: false, errorText: 'version is required' });
-		return;
-	}
-	runScript(['select-version', String(version)], 15000, function () {
-		message.respond({ returnValue: true, selecting: true, version: String(version) });
 	});
 });
 
@@ -286,7 +238,7 @@ service.register('getDeviceInfo', function (message) {
 		returnValue: true,
 		firmwareVersion: info.firmwareVersion,
 		webosVersion: info.webosVersion,
-		modelName: info.modelName
+		modelName: info.modelName,
 	});
 });
 

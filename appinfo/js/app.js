@@ -10,7 +10,6 @@
 	}
 
 	var pollTimer = null;
-	var updateTimer = null;
 	var firstUrl = null;
 	var logsVisible = false;
 	var autostartOn = true;
@@ -21,11 +20,9 @@
 	var hookOn = false; // boot hook present (managed by us via hbchannel exec)
 	var hookKnown = false; // hookOn has been read at least once
 	var pickerOpen = false;
-	var pickerReturnId = 'btnSelectVersion'; // button to refocus when the picker closes
-	var pickerMode = 'version'; // 'version' | 'storage'
+	var pickerReturnId = 'btnStorage'; // button to refocus when the picker closes
+	var pickerMode = 'storage';
 	var storageCurrent = ''; // current torrent-cache path ('' = internal RAM)
-	var currentVersion = '';
-	var updateAvailable = false; // a newer TorrServer release is available to install
 	var lastStatus = {}; // most recent status, so button state can be recomputed any time
 	var lampaAppId = null; // resolved Lampa app id (varies by build: lampa.tv, com.lampa.tv…)
 	var lampaChecked = false; // frontend launch-point scan has completed
@@ -91,11 +88,6 @@
 		});
 	}
 
-	function fmtMB(b) {
-		var mb = b / 1048576;
-		return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + ' MB';
-	}
-
 	// Toggle a button's greyed-out state via a CSS class (not the disabled
 	// attribute) so it keeps keyboard focus and D-pad navigation still works,
 	// while its onclick guard ignores activation.
@@ -159,18 +151,12 @@
 		if (running) removeClass(toggle, 'primary');
 		else addClass(toggle, 'primary');
 		setBtnDisabled($('btnRestart'), !running || busy);
-		setBtnDisabled($('btnSelectVersion'), busy);
 		setBtnDisabled($('btnStorage'), busy);
 		setBtnDisabled($('btnOpen'), !running || !firstUrl);
-		setBtnDisabled($('btnUpdate'), !updateAvailable || busy);
 		setBtnDisabled($('btnAutostart'), !autostartAvailable || autostartBusy || busy);
 
-		// Highlight Update only when there is genuinely something to install.
-		if (updateAvailable && !busy) addClass($('btnUpdate'), 'attention');
-		else removeClass($('btnUpdate'), 'attention');
-
 		// Pulse the pressed button (and the autostart toggle while it works).
-		var ids = ['btnToggle', 'btnRestart', 'btnUpdate', 'btnAutostart', 'btnSelectVersion', 'btnStorage'];
+		var ids = ['btnToggle', 'btnRestart', 'btnAutostart', 'btnStorage'];
 		for (var i = 0; i < ids.length; i++) removeClass($(ids[i]), 'loading');
 		if (busy && pendingBtnId) addClass($(pendingBtnId), 'loading');
 		if (autostartBusy) addClass($('btnAutostart'), 'loading');
@@ -191,20 +177,8 @@
 		lastStatus = s;
 
 		var st0 = s.state || (s.running ? 'running' : 'stopped');
-		var dl = +s.downloadedBytes || 0;
-		var tot = +s.totalBytes || 0;
 		var stateText;
-		if (st0 === 'downloading' || st0 === 'updating' || st0 === 'installing') {
-			var verb = st0 === 'downloading' ? 'Downloading' : st0 === 'updating' ? 'Updating' : 'Installing';
-			if (tot > 0) {
-				var pct = Math.max(0, Math.min(100, Math.round((dl / tot) * 100)));
-				stateText = verb + ' ' + fmtMB(dl) + ' / ' + fmtMB(tot) + ' (' + pct + '%)';
-			} else if (dl > 0) {
-				stateText = verb + ' ' + fmtMB(dl) + '…';
-			} else {
-				stateText = verb + '… (contacting GitHub)';
-			}
-		} else if (st0 === 'starting') {
+		if (st0 === 'starting') {
 			stateText = 'Starting…';
 		} else if (st0 === 'stopping') {
 			stateText = 'Stopping…';
@@ -228,16 +202,13 @@
 			$('state').className = 'v';
 		}
 		$('version').textContent = s.version || '—';
-		// When the installed version actually changes (an update or a manual
-		// version pick just finished), re-check upstream right away so the
-		// "update available" badge/button and version chip reflect the new
-		// build instead of lingering stale until the 30-minute timer fires.
-		var prevVersion = currentVersion;
-		currentVersion = s.version || '';
-		if (currentVersion && prevVersion && currentVersion !== prevVersion) {
-			checkUpdate();
-		}
 		$('arch').textContent = s.arch || '—';
+		// Show the web-UI login so the user can reach the (now authenticated) UI
+		// from a phone or PC on the LAN.
+		if (s.httpUser) {
+			$('authrow').className = 'row';
+			$('auth').textContent = s.httpUser + ' / ' + (s.httpPass || '');
+		}
 		$('datadir').textContent = s.dataDir || '—';
 		// Torrent cache location: empty means the internal in-RAM cache.
 		storageCurrent = s.cachePath || '';
@@ -293,9 +264,9 @@
 		if (st0.indexOf('error') === 0) {
 			msg('Tip: open <b>Logs</b> to see what went wrong, then press <b>Start</b> to try again.');
 		} else if (st0 === 'running') {
-			msg('Tip: press <b>Open Web UI</b>, or manage TorrServer from any device at the Access URL above.');
+			msg('Tip: press <b>Open Web UI</b>, or manage TorrServer from any device at the Access URL above (login shown on the Auth row).');
 		} else if (st0 === 'stopped') {
-			msg('Tip: press <b>Start</b> to launch TorrServer. The first launch downloads it automatically (~70 MB).');
+			msg('Tip: press <b>Start</b> to launch TorrServer.');
 		}
 	}
 
@@ -346,10 +317,6 @@
 	// restores D-pad focus so the screen is never left frozen.
 	function resume() {
 		if (!pollTimer) startPolling();
-		if (!updateTimer) {
-			checkUpdate();
-			updateTimer = setInterval(checkUpdate, 30 * 60 * 1000);
-		}
 		var btns = visibleButtons();
 		if (btns.length && (!document.activeElement || document.activeElement === document.body)) {
 			btns[0].focus();
@@ -362,10 +329,6 @@
 		if (pollTimer) {
 			clearInterval(pollTimer);
 			pollTimer = null;
-		}
-		if (updateTimer) {
-			clearInterval(updateTimer);
-			updateTimer = null;
 		}
 	}
 
@@ -402,21 +365,6 @@
 		window.addEventListener('pagehide', pause, false);
 	}
 
-	function checkUpdate() {
-		svc('checkUpdate', {}, function (r) {
-			updateAvailable = !!(r && r.updateAvailable);
-			$('updatebadge').className = 'pill' + (updateAvailable ? '' : ' hidden');
-			if (updateAvailable) {
-				$('btnUpdate').textContent = 'Update to ' + r.latest;
-				msg('A new TorrServer version (<b>' + r.latest + '</b>) is available. Press <b>Update</b> to install.');
-			} else {
-				$('btnUpdate').textContent = 'Update server';
-			}
-			// Let the centralised logic grey/highlight the Update button.
-			updateButtons(lastStatus);
-		});
-	}
-
 	function toggleLogs() {
 		logsVisible = !logsVisible;
 		$('logmodal').className = 'overlay' + (logsVisible ? '' : ' hidden');
@@ -437,83 +385,12 @@
 		}
 	}
 
-	// The currently focusable controls inside the open version picker (the list
-	// of release buttons plus Cancel), used for D-pad up/down navigation.
+	// The currently focusable controls inside the open storage picker (the list
+	// of storage buttons plus Cancel), used for D-pad up/down navigation.
 	function pickerItems() {
 		return Array.prototype.slice.call($('vpicker').getElementsByTagName('button')).filter(function (b) {
 			return b.offsetParent !== null;
 		});
-	}
-
-	// The service returns either objects ({tag, prerelease}) or, from an older
-	// cache, bare tag strings. Normalise both so the picker code is uniform.
-	function normalizeVersion(v) {
-		if (typeof v === 'string') return { tag: v, prerelease: false };
-		return { tag: v.tag, prerelease: !!v.prerelease };
-	}
-
-	function renderVersions(versions) {
-		var list = $('vlist');
-		list.innerHTML = '';
-		if (!versions.length) {
-			list.textContent = 'No versions available — check your network and try again.';
-			return;
-		}
-		// "Latest" belongs to the newest STABLE (non-prerelease) release, matching
-		// GitHub's own "Latest" label — not simply the first entry, which may be a
-		// pre-release.
-		var latestStableTag = null;
-		for (var k = 0; k < versions.length; k++) {
-			var vk = normalizeVersion(versions[k]);
-			if (!vk.prerelease) {
-				latestStableTag = vk.tag;
-				break;
-			}
-		}
-		for (var i = 0; i < versions.length; i++) {
-			(function (v) {
-				var tag = v.tag;
-				var isCurrent = tag === currentVersion;
-				var b = document.createElement('button');
-				b.className = 'vitem' + (isCurrent ? ' current' : '');
-				var chips = '';
-				if (isCurrent) chips += '<span class="chip-note installed">installed</span>';
-				if (v.prerelease) {
-					chips += '<span class="chip-note pre">pre-release</span>';
-				} else if (tag === latestStableTag) {
-					chips += '<span class="chip-note latest">latest</span>';
-				}
-				b.innerHTML = escapeHtml(tag) + (chips ? '<span class="tag-notes">' + chips + '</span>' : '');
-				b.onclick = function () {
-					chooseVersion(tag);
-				};
-				list.appendChild(b);
-			})(normalizeVersion(versions[i]));
-		}
-		var items = pickerItems();
-		if (items.length) items[0].focus();
-	}
-
-	function openVersionPicker() {
-		pickerOpen = true;
-		pickerMode = 'version';
-		pickerReturnId = 'btnSelectVersion';
-		$('dlgTitle').textContent = 'Select TorrServer version';
-		$('dlgSub').textContent = 'Pick a release to install. Use this to downgrade if the latest build has issues.';
-		$('vpicker').className = 'overlay';
-		$('vlist').textContent = 'Loading…';
-		$('btnVCancel').focus();
-		svc(
-			'listVersions',
-			{},
-			function (r) {
-				if (!pickerOpen) return;
-				renderVersions((r && r.versions) || []);
-			},
-			function () {
-				$('vlist').textContent = 'Could not load versions — check your network and try again.';
-			}
-		);
 	}
 
 	function closeVersionPicker() {
@@ -523,18 +400,6 @@
 		var sel = $(pickerReturnId);
 		if (sel && btns.indexOf(sel) !== -1) sel.focus();
 		else if (btns.length) btns[0].focus();
-	}
-
-	function chooseVersion(tag) {
-		if (tag === currentVersion) {
-			msg('TorrServer <b>' + escapeHtml(tag) + '</b> is already installed.');
-			closeVersionPicker();
-			return;
-		}
-		beginAction('btnSelectVersion', 'Installing TorrServer <b>' + escapeHtml(tag) + '</b>… this can take a minute.', true);
-		svc('selectVersion', { version: tag }, poll);
-		closeVersionPicker();
-		setTimeout(checkUpdate, 60000);
 	}
 
 	// Human-readable free space for the storage picker.
@@ -628,30 +493,14 @@
 				beginAction('btnToggle', 'Stopping…', false);
 				stopServer(poll);
 			} else {
-				beginAction('btnToggle', 'Starting… first launch downloads TorrServer (~70&nbsp;MB), this can take a minute.', true);
+				beginAction('btnToggle', 'Starting…', true);
 				svc('start', {}, poll);
 			}
 		};
 		$('btnRestart').onclick = function () {
 			if (isDisabled($('btnRestart'))) return;
 			beginAction('btnRestart', 'Restarting…', true);
-			// Clear any root-owned instance first so the (jailed) service can
-			// cleanly restart its own instance instead of seeing it "running".
-			rootKill(function () {
-				svc('restart', {}, poll);
-			});
-		};
-		$('btnUpdate').onclick = function () {
-			if (isDisabled($('btnUpdate'))) return;
-			beginAction('btnUpdate', 'Updating to the latest TorrServer release…', true);
-			// Clear the badge right away instead of waiting for the next check.
-			$('updatebadge').className = 'pill hidden';
-			svc('update', {}, poll);
-			setTimeout(checkUpdate, 60000);
-		};
-		$('btnSelectVersion').onclick = function () {
-			if (isDisabled($('btnSelectVersion'))) return;
-			openVersionPicker();
+			svc('restart', {}, poll);
 		};
 		$('btnStorage').onclick = function () {
 			if (isDisabled($('btnStorage'))) return;
@@ -685,24 +534,12 @@
 		$('btnLampa').onclick = function () {
 			msg('Launching Lampa…');
 			var id = lampaAppId || LAMPA_FALLBACK_ID;
-			var failed = function () {
+			// Launch via the application manager from the app itself. The frontend
+			// call carries our registered app identity, which the manager accepts -
+			// no root needed.
+			svc('launch', { id: id }, function () {}, function () {
 				msg('Could not launch Lampa. Open it from the TV home screen.');
-			};
-			// Launching an app is rejected from the jailed service and from the
-			// frontend's limited role on webOS 9, but a root luna-send (via the
-			// Homebrew Channel, the same path we use for autostart) works. Fall
-			// back to a direct frontend launch for non-rooted / older TVs.
-			var frontendLaunch = function () {
-				svc('launch', { id: id }, function () {}, failed, APPMGR);
-			};
-			hbExec(
-				'luna-send -n 1 luna://com.webos.applicationManager/launch \'{"id":"' + id + '"}\'',
-				function (out) {
-					if (/"returnValue"\s*:\s*true/.test(out)) return;
-					frontendLaunch();
-				},
-				frontendLaunch
-			);
+			}, APPMGR);
 		};
 		$('btnMedia').onclick = function () {
 			msg('Launching media player…');
@@ -715,25 +552,13 @@
 				return;
 			}
 			msg('Opening the web UI in the TV browser…');
-			// Launch the system browser at the TorrServer URL. A root luna-send
-			// (via the Homebrew Channel) is the most reliable path on webOS 9;
-			// fall back to a frontend launch, then finally to navigating our own
-			// webview so the page still opens on TVs where neither launch works.
+			// Launch the system browser at the TorrServer URL via the application
+			// manager from the app itself (carries our registered identity). As a
+			// last resort navigate our own webview so the page still opens.
 			var launchParams = { id: BROWSER_ID, params: { target: firstUrl } };
-			var inWebview = function () {
+			svc('launch', launchParams, function () {}, function () {
 				window.location.href = firstUrl;
-			};
-			var frontendLaunch = function () {
-				svc('launch', launchParams, function () {}, inWebview, APPMGR);
-			};
-			hbExec(
-				'luna-send -n 1 luna://com.webos.applicationManager/launch \'{"id":"' + BROWSER_ID + '","params":{"target":"' + firstUrl + '"}}\'',
-				function (out) {
-					if (/"returnValue"\s*:\s*true/.test(out)) return;
-					frontendLaunch();
-				},
-				frontendLaunch
-			);
+			}, APPMGR);
 		};
 	}
 
@@ -754,38 +579,9 @@
 		);
 	}
 
-	// Kill any TorrServer left running as root by the boot hook: a jailed service
-	// runs as a normal user and cannot signal a root-owned process, so Stop would
-	// otherwise silently do nothing. A no-op on non-rooted TVs.
-	function rootKill(done) {
-		if (hbRooted !== true) {
-			if (done) done();
-			return;
-		}
-		hbExec(
-			'pkill -9 -x TorrServer 2>/dev/null; rm -f /media/developer/torrserver/torrserver.pid 2>/dev/null; echo stopped > /media/developer/torrserver/state 2>/dev/null; echo DONE',
-			function () {
-				if (done) done();
-			},
-			function () {
-				if (done) done();
-			}
-		);
-	}
-
-	// Stop the server through the (jailed) service, then make sure no root-owned
-	// instance survives on a rooted TV.
+	// Stop the server through the service.
 	function stopServer(done) {
-		svc(
-			'stop',
-			{},
-			function () {
-				rootKill(done);
-			},
-			function () {
-				rootKill(done);
-			}
-		);
+		svc('stop', {}, done, done);
 	}
 
 	// Probe root once at startup. Autostart is managed by running the boot-hook
@@ -974,11 +770,9 @@
 		setupNav();
 		setupLifecycle();
 		startPolling();
-		checkUpdate();
 		probeRoot();
 		probeLampa();
 		loadDeviceInfo();
-		updateTimer = setInterval(checkUpdate, 30 * 60 * 1000);
 
 		var xhr = new XMLHttpRequest();
 		xhr.open('GET', 'appinfo.json', true);

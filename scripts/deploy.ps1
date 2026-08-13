@@ -94,17 +94,6 @@ else
   echo "INSTALL FAILED - last install messages:"
   tail -n 15 /tmp/torrserver-install.log 2>/dev/null
 fi
-ELEV=""
-for p in /media/developer/apps/usr/palm/services/org.webosbrew.hbchannel.service/elevate-service /media/cryptofs/apps/usr/palm/services/org.webosbrew.hbchannel.service/elevate-service; do
-  [ -x "$p" ] && ELEV="$p" && break
-done
-[ -z "$ELEV" ] && ELEV=$(command -v elevate-service 2>/dev/null)
-[ -z "$ELEV" ] && ELEV=$(find /media /var/lib -name elevate-service 2>/dev/null | head -n1)
-if [ -n "$ELEV" ] && [ -x "$ELEV" ]; then
-  "$ELEV" "$SVCID" && echo "elevated via $ELEV"
-else
-  echo "WARN: Homebrew elevate-service not found - service will run unprivileged (data dir falls back to /tmp)."
-fi
 '@
 
 if ($Autostart) {
@@ -123,5 +112,5 @@ Invoke-TV "echo $b64 | base64 -d | sh"
 
 Write-Host ''
 Write-Host 'Done.' -ForegroundColor Green
-Write-Host 'Open "TorrServer" on the TV and press Start (first launch downloads TorrServer).'
+Write-Host 'Open "TorrServer" on the TV and press Start.'
 Write-Host "Then manage it from any device at: http://${TVHost}:8090"
