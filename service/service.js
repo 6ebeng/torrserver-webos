@@ -274,6 +274,22 @@ service.register('setStorage', function (message) {
 	});
 });
 
+// Change the web UI / API Basic Auth credentials. The control script rewrites
+// accs.db and restarts TorrServer if it is running, so the new login takes
+// effect right away. We ack immediately and the UI follows the restart via
+// status polling.
+service.register('setAuth', function (message) {
+	var user = (message.payload && message.payload.user) || '';
+	var pass = (message.payload && message.payload.pass) || '';
+	if (!String(pass)) {
+		message.respond({ returnValue: false, errorText: 'pass is required' });
+		return;
+	}
+	runScript(['set-auth', String(user), String(pass)], 15000, function () {
+		message.respond({ returnValue: true, setting: true });
+	});
+});
+
 // Explicitly de-register from the Luna bus on every exit path so ls-hubd frees
 // our service name immediately. This is the key to surviving app updates.
 //

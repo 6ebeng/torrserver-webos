@@ -39,7 +39,13 @@
                     </span>
                 </div>
                 <div class="row"><span class="k">Access URL</span><span id="urls" class="v">&mdash;</span></div>
-                <div class="row hidden" id="authrow"><span class="k">Web UI login</span><span id="auth" class="v">&mdash;</span></div>
+                <div class="row hidden" id="authrow">
+                    <span class="k">Web UI login</span>
+                    <span class="rowend">
+                        <span id="auth" class="v">&mdash;</span>
+                        <button id="btnAuth" class="btn rowbtn">Change</button>
+                    </span>
+                </div>
             </section>
 
             <section class="actions">
@@ -78,6 +84,22 @@
             </div>
             <div class="dialog-actions">
                 <button id="btnLogClose" class="btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="authmodal" class="overlay hidden">
+        <div class="dialog">
+            <div class="dialog-title">Web UI login</div>
+            <div class="dialog-sub">Set the username and password for the TorrServer web UI and API. TorrServer will
+                restart to apply them.</div>
+            <label class="field-label" for="authUser">Username</label>
+            <input id="authUser" class="field" type="text" autocomplete="off" spellcheck="false">
+            <label class="field-label" for="authPass">Password</label>
+            <input id="authPass" class="field" type="text" autocomplete="off" spellcheck="false">
+            <div class="dialog-actions">
+                <button id="btnAuthCancel" class="btn">Cancel</button>
+                <button id="btnAuthSave" class="btn primary">Save</button>
             </div>
         </div>
     </div>

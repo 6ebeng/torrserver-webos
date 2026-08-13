@@ -216,3 +216,22 @@ footer b { color: #cdded4; }
 .chip-note.pre { background: #8a6d1f; color: #fff3d6; }
 .chip-note.installed { background: #0f1713; color: #b9cabf; }
 .dialog-actions { display: flex; justify-content: flex-end; }
+/* Text inputs for the auth modal. Old webOS (Chromium ~38) supports basic
+   flex/inputs fine; the on-screen keyboard (IME) opens when a field is
+   focused. Plain borders + a focus ring match the rest of the UI. */
+.field-label { display: block; font-size: 20px; color: #8ca397; margin: 0 0 8px 2px; }
+.field {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 26px;
+  font-family: inherit;
+  padding: 14px 18px;
+  margin-bottom: 22px;
+  border-radius: 12px;
+  border: 3px solid #26342c;
+  background: #0f1713;
+  color: #e8f3ec;
+  outline: none;
+}
+.field:focus { border-color: #3fb57a; }

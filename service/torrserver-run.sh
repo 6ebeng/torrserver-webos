@@ -2,8 +2,8 @@
 #
 # TorrServer control script for webOS (POSIX sh / busybox compatible).
 #
-# Subcommands: install | start | stop | restart | update | status | logs |
-#              datadir | latest | versions | select-version | enable-autostart |
+# Subcommands: install | start | stop | restart | status | logs | datadir |
+#              cache | list-usb | set-storage | set-auth | enable-autostart |
 #              disable-autostart
 #
 # It auto-detects a writable + exec-capable data directory, installs the
@@ -68,6 +68,7 @@ BIN="$APP_DIR/TorrServer"
 SETTINGS_FILE="$DATA_SUB/settings.json"
 CACHEFILE="$DATA_DIR/.cache_path"
 WANTCACHEFILE="$DATA_DIR/.want_cache"
+WANTAUTHFILE="$DATA_DIR/.want_auth"
 ACCS_FILE="$DATA_SUB/accs.db"
 mkdir -p "$DATA_DIR" "$APP_DIR" "$DATA_SUB" "$DATA_DIR/tmp" 2>/dev/null
 
@@ -207,11 +208,19 @@ list_usb() {
 # dir - NOT from settings.json. We generate one stable random password per
 # install, store it in accs.db, and show it in the app so the user can log in
 # from a phone/PC on the LAN.
-http_user() { echo "torrserver"; }
+# Read the username (the first/only key) from accs.db; falls back to the
+# default when the file is missing.
+http_user() {
+    if [ -f "$ACCS_FILE" ]; then
+        _u=$(sed -n 's/^{[ ]*"\([^"]*\)"[ ]*:.*/\1/p' "$ACCS_FILE" 2>/dev/null)
+        [ -n "$_u" ] && { echo "$_u"; return; }
+    fi
+    echo "torrserver"
+}
 http_pass() {
     if [ -f "$ACCS_FILE" ]; then
-        # Extract the stored password from the accs.db JSON map.
-        sed -n 's/.*"'"$(http_user)"'"[ ]*:[ ]*"\([^"]*\)".*/\1/p' "$ACCS_FILE" 2>/dev/null
+        # Extract the password (the value of the single user:pass pair).
+        sed -n 's/^{[ ]*"[^"]*"[ ]*:[ ]*"\([^"]*\)"[ ]*}.*/\1/p' "$ACCS_FILE" 2>/dev/null
         return
     fi
     echo ""
@@ -225,6 +234,20 @@ ensure_accs() {
     [ -n "$_p" ] || _p="$(date +%s)$$RANDOM"
     printf '{"%s":"%s"}\n' "$(http_user)" "$_p" >"$ACCS_FILE" 2>/dev/null
     chmod 600 "$ACCS_FILE" 2>/dev/null
+}
+
+# set_auth <user> <pass> -> write accs.db with the given credentials. Any
+# double-quote or backslash is stripped so the JSON map stays valid. The
+# restart (so TorrServer picks the new accs.db up) is handled by the caller.
+set_auth() {
+    _u=$(printf '%s' "${1:-}" | tr -d '"\\' | tr -d " \t")
+    _p=$(printf '%s' "${2:-}" | tr -d '"\\')
+    [ -n "$_u" ] || _u="torrserver"
+    [ -n "$_p" ] || { echo "error:emptypass"; return 1; }
+    mkdir -p "$DATA_SUB" 2>/dev/null
+    printf '{"%s":"%s"}\n' "$_u" "$_p" >"$ACCS_FILE" 2>/dev/null || { echo "error:write"; return 1; }
+    chmod 600 "$ACCS_FILE" 2>/dev/null
+    echo "ok"
 }
 
 # Merge our TV-safe defaults into TorrServer's settings.json WITHOUT discarding
@@ -423,11 +446,13 @@ case "${1:-}" in
     cache)    cache_path ;;
     list-usb) list_usb ;;
     set-storage) echo "${2:-}" >"$WANTCACHEFILE" 2>/dev/null; spawn_bg _set_storage ;;
+    set-auth) printf '%s\n%s\n' "${2:-}" "${3:-}" >"$WANTAUTHFILE" 2>/dev/null; spawn_bg _set_auth ;;
     enable-autostart)  enable_autostart && echo "enabled" || echo "failed" ;;
     disable-autostart) disable_autostart && echo "disabled" || echo "failed" ;;
     _start)   do_start ;;
     _install) do_install ;;
     _restart) TS_QUIET=1; set_state "restarting"; do_stop; do_start ;;
     _set_storage) TS_QUIET=1; set_cache "$(cat "$WANTCACHEFILE" 2>/dev/null)"; if is_running; then set_state "restarting"; do_stop; do_start; else set_state "stopped"; fi ;;
-    *) echo "usage: $0 {install|start|stop|restart|status|logs|datadir|cache|list-usb|set-storage|enable-autostart|disable-autostart}"; exit 1 ;;
+    _set_auth) TS_QUIET=1; _au=$(sed -n '1p' "$WANTAUTHFILE" 2>/dev/null); _ap=$(sed -n '2p' "$WANTAUTHFILE" 2>/dev/null); rm -f "$WANTAUTHFILE" 2>/dev/null; if set_auth "$_au" "$_ap" >/dev/null 2>&1; then if is_running; then set_state "restarting"; do_stop; do_start; else set_state "stopped"; fi; else set_state "error:auth"; fi ;;
+    *) echo "usage: $0 {install|start|stop|restart|status|logs|datadir|cache|list-usb|set-storage|set-auth|enable-autostart|disable-autostart}"; exit 1 ;;
 esac

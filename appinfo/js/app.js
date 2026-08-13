@@ -23,6 +23,7 @@
 	var pickerReturnId = 'btnStorage'; // button to refocus when the picker closes
 	var pickerMode = 'storage';
 	var storageCurrent = ''; // current torrent-cache path ('' = internal RAM)
+	var authOpen = false; // the Web UI login modal is open
 	var lastStatus = {}; // most recent status, so button state can be recomputed any time
 	var lampaAppId = null; // resolved Lampa app id (varies by build: lampa.tv, com.lampa.tv…)
 	var lampaChecked = false; // frontend launch-point scan has completed
@@ -486,6 +487,61 @@
 		closeVersionPicker();
 	}
 
+	// --- Web UI login (auth) modal -------------------------------------------
+	// Focusable controls inside the open auth modal: the two inputs plus the
+	// Cancel/Save buttons, so D-pad up/down moves between them.
+	function authItems() {
+		return [$('authUser'), $('authPass'), $('btnAuthCancel'), $('btnAuthSave')];
+	}
+
+	function openAuthModal() {
+		authOpen = true;
+		// Pre-fill with the current credentials so a small edit is easy.
+		$('authUser').value = lastStatus.httpUser || '';
+		$('authPass').value = lastStatus.httpPass || '';
+		$('authmodal').className = 'overlay';
+		$('authUser').focus();
+	}
+
+	function closeAuthModal(refocus) {
+		authOpen = false;
+		// Drop focus from the input so the on-screen keyboard (IME) dismisses.
+		if (document.activeElement && typeof document.activeElement.blur === 'function') {
+			document.activeElement.blur();
+		}
+		$('authmodal').className = 'overlay hidden';
+		if (refocus !== false) {
+			var btns = visibleButtons();
+			var b = $('btnAuth');
+			if (b && btns.indexOf(b) !== -1) b.focus();
+			else if (btns.length) btns[0].focus();
+		}
+	}
+
+	function saveAuth() {
+		var user = $('authUser').value.replace(/^\s+|\s+$/g, '');
+		var pass = $('authPass').value;
+		if (!pass) {
+			msg('Password cannot be empty.');
+			return;
+		}
+		if (!user) user = 'torrserver';
+		var running = lastStatus.running === true;
+		beginAction('btnAuth', running ? 'Updating login… TorrServer will restart.' : 'Updating login…', running);
+		svc(
+			'setAuth',
+			{ user: user, pass: pass },
+			function () {
+				msg('Login updated. Use the new credentials for the Web UI and API.');
+				poll();
+			},
+			function () {
+				msg('Could not update the login — please try again.');
+			}
+		);
+		closeAuthModal();
+	}
+
 	function wire() {
 		$('btnToggle').onclick = function () {
 			if (isDisabled($('btnToggle'))) return;
@@ -505,6 +561,15 @@
 		$('btnStorage').onclick = function () {
 			if (isDisabled($('btnStorage'))) return;
 			openStoragePicker();
+		};
+		$('btnAuth').onclick = function () {
+			openAuthModal();
+		};
+		$('btnAuthCancel').onclick = function () {
+			closeAuthModal();
+		};
+		$('btnAuthSave').onclick = function () {
+			saveAuth();
 		};
 		$('btnVCancel').onclick = closeVersionPicker;
 		$('btnAutostart').onclick = function () {
@@ -714,6 +779,25 @@
 
 		document.addEventListener('keydown', function (e) {
 			var k = e.keyCode;
+			// While the auth modal is open it captures navigation: up/down moves
+			// between the username field, password field and Cancel/Save, Back/
+			// Escape cancels. Left/right inside a text input move the caret, so
+			// we only handle up/down and the close keys here.
+			if (authOpen) {
+				if (k === 38 || k === 40) {
+					var aitems = authItems();
+					var ai = aitems.indexOf(document.activeElement);
+					if (ai < 0) ai = 0;
+					if (k === 38) ai = (ai + aitems.length - 1) % aitems.length;
+					else ai = (ai + 1) % aitems.length;
+					aitems[ai].focus();
+					e.preventDefault();
+				} else if (k === 461 || k === 27 || k === 8) {
+					closeAuthModal();
+					e.preventDefault();
+				}
+				return;
+			}
 			// While the version picker is open it captures navigation: up/down moves
 			// through the release list, Back/Escape closes it.
 			if (pickerOpen) {
