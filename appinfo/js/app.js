@@ -491,7 +491,7 @@
 	// Focusable controls inside the open auth modal: the two inputs plus the
 	// Cancel/Save buttons, so D-pad up/down moves between them.
 	function authItems() {
-		return [$('authUser'), $('authPass'), $('btnAuthCancel'), $('btnAuthSave')];
+		return [$('authUser'), $('authPass'), $('btnAuthDefault'), $('btnAuthCancel'), $('btnAuthSave')];
 	}
 
 	function openAuthModal() {
@@ -542,6 +542,25 @@
 		closeAuthModal();
 	}
 
+	// Restore the default credentials (torrserver / the TV's MAC-derived
+	// password), useful after a custom login is forgotten or no longer wanted.
+	function resetAuth() {
+		var running = lastStatus.running === true;
+		beginAction('btnAuth', running ? 'Restoring default login… TorrServer will restart.' : 'Restoring default login…', running);
+		svc(
+			'resetAuth',
+			{},
+			function () {
+				msg('Default login restored. The credentials are shown on the Web UI login row.');
+				poll();
+			},
+			function () {
+				msg('Could not restore the default login — please try again.');
+			}
+		);
+		closeAuthModal();
+	}
+
 	function wire() {
 		$('btnToggle').onclick = function () {
 			if (isDisabled($('btnToggle'))) return;
@@ -570,6 +589,9 @@
 		};
 		$('btnAuthSave').onclick = function () {
 			saveAuth();
+		};
+		$('btnAuthDefault').onclick = function () {
+			resetAuth();
 		};
 		$('btnVCancel').onclick = closeVersionPicker;
 		$('btnAutostart').onclick = function () {

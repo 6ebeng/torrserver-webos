@@ -64,7 +64,13 @@ function safeExecFile(file, args, opts, cb) {
 }
 
 function runScript(args, timeoutMs, cb) {
-	safeExecFile('sh', [SCRIPT].concat(args), { timeout: timeoutMs || 0, maxBuffer: 4 * 1024 * 1024 }, function (err, stdout, stderr) {
+	// Pass the MAC-derived default password so the control script can create
+	// accs.db with it on first run (it cannot read /sys/class/net from the jail).
+	var env = { TS_DEFAULT_PASS: defaultPassword() };
+	for (var k in process.env) {
+		if (Object.prototype.hasOwnProperty.call(process.env, k)) env[k] = process.env[k];
+	}
+	safeExecFile('sh', [SCRIPT].concat(args), { timeout: timeoutMs || 0, maxBuffer: 4 * 1024 * 1024, env: env }, function (err, stdout, stderr) {
 		cb(err, String(stdout || ''), String(stderr || ''));
 	});
 }
@@ -96,6 +102,30 @@ function lampaInstalled() {
 		}
 	}
 	return false;
+}
+
+// The default web-UI password: the first 8 hex chars of the TV's MAC address
+// (lowercased), read via os.networkInterfaces(). This works from inside the
+// service jail (the network namespace is shared, unlike /sys/class/net, which a
+// jailed process cannot read). Stable per-TV and recoverable, so the user can
+// always get back in by pressing the "Default" button.
+function defaultPassword() {
+	try {
+		var ifaces = os.networkInterfaces();
+		var names = Object.keys(ifaces);
+		for (var n = 0; n < names.length; n++) {
+			var list = ifaces[names[n]] || [];
+			for (var i = 0; i < list.length; i++) {
+				var mac = list[i].mac;
+				if (mac && mac !== '00:00:00:00:00:00') {
+					return mac.replace(/:/g, '').toLowerCase().substring(0, 8);
+				}
+			}
+		}
+	} catch (e) {
+		/* ignore */
+	}
+	return 'torrserver';
 }
 
 function lunaSend(uri, payload, cb) {
@@ -287,6 +317,16 @@ service.register('setAuth', function (message) {
 	}
 	runScript(['set-auth', String(user), String(pass)], 15000, function () {
 		message.respond({ returnValue: true, setting: true });
+	});
+});
+
+// Restore the default credentials (torrserver / the TV's MAC-derived
+// password). The MAC is read here via os.networkInterfaces() (works inside the
+// service jail, unlike /sys) and passed to the control script, which rewrites
+// accs.db and restarts TorrServer if it is running.
+service.register('resetAuth', function (message) {
+	runScript(['reset-auth', defaultPassword()], 15000, function () {
+		message.respond({ returnValue: true, resetting: true });
 	});
 });
 

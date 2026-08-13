@@ -91,15 +91,18 @@
     <div id="authmodal" class="overlay hidden">
         <div class="dialog">
             <div class="dialog-title">Web UI login</div>
-            <div class="dialog-sub">Set the username and password for the TorrServer web UI and API. TorrServer will
-                restart to apply them.</div>
+            <div class="dialog-sub">Set the username and password for the TorrServer web UI and API (TorrServer
+                restarts to apply them). Default restores <b>torrserver</b> plus the TV-specific password.</div>
             <label class="field-label" for="authUser">Username</label>
             <input id="authUser" class="field" type="text" autocomplete="off" spellcheck="false">
             <label class="field-label" for="authPass">Password</label>
             <input id="authPass" class="field" type="text" autocomplete="off" spellcheck="false">
-            <div class="dialog-actions">
-                <button id="btnAuthCancel" class="btn">Cancel</button>
-                <button id="btnAuthSave" class="btn primary">Save</button>
+            <div class="dialog-actions split">
+                <button id="btnAuthDefault" class="btn">Default</button>
+                <span class="dialog-actions-right">
+                    <button id="btnAuthCancel" class="btn">Cancel</button>
+                    <button id="btnAuthSave" class="btn primary">Save</button>
+                </span>
             </div>
         </div>
     </div>

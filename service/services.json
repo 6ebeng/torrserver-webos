@@ -20,7 +20,8 @@
 				{ "name": "getDeviceInfo", "description": "Return the TV firmware and webOS version" },
 				{ "name": "listStorage", "description": "List USB storage for the torrent cache and the current cache path" },
 				{ "name": "setStorage", "description": "Set the torrent cache/downloads location (USB path or internal RAM)" },
-				{ "name": "setAuth", "description": "Set the web UI / API Basic Auth username and password" }
+				{ "name": "setAuth", "description": "Set the web UI / API Basic Auth username and password" },
+				{ "name": "resetAuth", "description": "Restore the default web UI / API credentials" }
 			]
 		}
 	]

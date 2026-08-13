@@ -216,6 +216,10 @@ footer b { color: #cdded4; }
 .chip-note.pre { background: #8a6d1f; color: #fff3d6; }
 .chip-note.installed { background: #0f1713; color: #b9cabf; }
 .dialog-actions { display: flex; justify-content: flex-end; }
+/* Auth modal: Default on the left, Cancel/Save on the right. */
+.dialog-actions.split { justify-content: space-between; align-items: center; }
+.dialog-actions-right { display: flex; }
+.dialog-actions-right .btn { margin-left: 14px; }
 /* Text inputs for the auth modal. Old webOS (Chromium ~38) supports basic
    flex/inputs fine; the on-screen keyboard (IME) opens when a field is
    focused. Plain borders + a focus ring match the rest of the UI. */

@@ -8,7 +8,7 @@
 	"sourceUrl": "https://github.com/6ebeng/torrserver-webos",
 	"ipkUrl": "https://github.com/6ebeng/torrserver-webos/releases/download/v1.2.0/com.torrserver.app_1.2.0_all.ipk",
 	"ipkHash": {
-		"sha256": "6a6eaaab61a3a83f0f3642992b699455e2e8d9d8b42e2ec74027d4e38d484426"
+		"sha256": "28301072719e0f04fc88bfc21d3cec9c5d1914d2c919ec1029e29cc94d384de9"
 	},
-	"ipkSize": 23365252
+	"ipkSize": 23366250
 }

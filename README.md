@@ -27,7 +27,7 @@ powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Autostart  # also e
 Each control sits inline with the value it changes:
 
 - **Start/Stop** is one toggle button (green **Start** when stopped, **Stop** when running), next to **Restart** in the actions bar.
-- **Web UI login** row → the Basic Auth username/password for the web interface and API.
+- **Web UI login** row → the Basic Auth username/password for the web interface and API, plus **Change** to set your own (and **Default** in that dialog to restore the built-in ones). The default login is username `torrserver` with a password derived from the TV's MAC address (the first 8 hex characters), so it is unique per TV and always recoverable from the app.
 - **Autostart** row → an **Enabled/Disabled** toggle (**off by default**; enabling it writes a boot hook, which requires a rooted TV with the Homebrew Channel). Hidden, with an explanation, on non-rooted TVs.
 - **Cache storage** row → **Change** (move the torrent cache to a USB drive).
 - The actions bar also has **Open Web UI**, **MediaPlayer** and **Logs** (plus **Lampa** when the Lampa app is installed).

@@ -3,8 +3,8 @@
 # TorrServer control script for webOS (POSIX sh / busybox compatible).
 #
 # Subcommands: install | start | stop | restart | status | logs | datadir |
-#              cache | list-usb | set-storage | set-auth | enable-autostart |
-#              disable-autostart
+#              cache | list-usb | set-storage | set-auth | reset-auth |
+#              enable-autostart | disable-autostart
 #
 # It auto-detects a writable + exec-capable data directory, installs the
 # bundled TorrServer binary (a single static Go build shipped inside the IPK,
@@ -208,6 +208,23 @@ list_usb() {
 # dir - NOT from settings.json. We generate one stable random password per
 # install, store it in accs.db, and show it in the app so the user can log in
 # from a phone/PC on the LAN.
+# Default password fallback: the service computes the real default from the
+# TV's MAC (via os.networkInterfaces(), which works inside the jail) and passes
+# it to reset-auth / first-run setup. This shell-side default_pass is only a
+# last-resort fallback when the script is run without that argument.
+default_pass() {
+    _mac=""
+    for _f in /sys/class/net/*/address; do
+        [ -f "$_f" ] || continue
+        case "$_f" in */lo/*) continue ;; esac
+        _m=$(cat "$_f" 2>/dev/null)
+        case "$_m" in ''|00:00:00:00:00:00) continue ;; esac
+        _mac="$_m"; break
+    done
+    [ -n "$_mac" ] || { echo "torrserver"; return; }
+    echo "$_mac" | tr -d ':' | tr 'A-F' 'a-f' | cut -c1-8
+}
+
 # Read the username (the first/only key) from accs.db; falls back to the
 # default when the file is missing.
 http_user() {
@@ -226,28 +243,43 @@ http_pass() {
     echo ""
 }
 
-# Create accs.db with a fresh random password if it does not exist yet.
-ensure_accs() {
-    mkdir -p "$DATA_SUB" 2>/dev/null
-    if [ -f "$ACCS_FILE" ]; then return 0; fi
-    _p=$( (dd if=/dev/urandom bs=9 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n') )
-    [ -n "$_p" ] || _p="$(date +%s)$$RANDOM"
-    printf '{"%s":"%s"}\n' "$(http_user)" "$_p" >"$ACCS_FILE" 2>/dev/null
-    chmod 600 "$ACCS_FILE" 2>/dev/null
-}
-
-# set_auth <user> <pass> -> write accs.db with the given credentials. Any
-# double-quote or backslash is stripped so the JSON map stays valid. The
-# restart (so TorrServer picks the new accs.db up) is handled by the caller.
-set_auth() {
+# Write accs.db with the given credentials. Any double-quote or backslash is
+# stripped so the JSON map stays valid. The restart (so TorrServer picks the
+# new accs.db up) is handled by the caller.
+_write_accs() {
     _u=$(printf '%s' "${1:-}" | tr -d '"\\' | tr -d " \t")
     _p=$(printf '%s' "${2:-}" | tr -d '"\\')
     [ -n "$_u" ] || _u="torrserver"
-    [ -n "$_p" ] || { echo "error:emptypass"; return 1; }
+    [ -n "$_p" ] || return 1
     mkdir -p "$DATA_SUB" 2>/dev/null
-    printf '{"%s":"%s"}\n' "$_u" "$_p" >"$ACCS_FILE" 2>/dev/null || { echo "error:write"; return 1; }
+    printf '{"%s":"%s"}\n' "$_u" "$_p" >"$ACCS_FILE" 2>/dev/null || return 1
     chmod 600 "$ACCS_FILE" 2>/dev/null
-    echo "ok"
+}
+
+# Create accs.db with the default (MAC-derived) password if it does not exist.
+# Prefer the password the service computed from the MAC (works inside the
+# jail); the shell-side default_pass is a fallback for direct invocation.
+ensure_accs() {
+    [ -f "$ACCS_FILE" ] && return 0
+    _p="${TS_DEFAULT_PASS:-}"
+    [ -n "$_p" ] || _p=$(default_pass)
+    _write_accs "torrserver" "$_p"
+}
+
+# set_auth <user> <pass> -> set custom credentials.
+set_auth() {
+    [ -n "${2:-}" ] || { echo "error:emptypass"; return 1; }
+    _write_accs "$1" "$2" && echo "ok" || { echo "error:write"; return 1; }
+}
+
+# reset_auth [pass] -> restore the default torrserver user. The password is
+# the MAC-derived one computed by the service (arg 1, or the TS_DEFAULT_PASS
+# env var); the shell-side default_pass is the fallback when neither is given.
+reset_auth() {
+    _p="${1:-}"
+    [ -n "$_p" ] || _p="${TS_DEFAULT_PASS:-}"
+    [ -n "$_p" ] || _p=$(default_pass)
+    _write_accs "torrserver" "$_p" && echo "ok" || { echo "error:write"; return 1; }
 }
 
 # Merge our TV-safe defaults into TorrServer's settings.json WITHOUT discarding
@@ -447,6 +479,7 @@ case "${1:-}" in
     list-usb) list_usb ;;
     set-storage) echo "${2:-}" >"$WANTCACHEFILE" 2>/dev/null; spawn_bg _set_storage ;;
     set-auth) printf '%s\n%s\n' "${2:-}" "${3:-}" >"$WANTAUTHFILE" 2>/dev/null; spawn_bg _set_auth ;;
+    reset-auth) printf '\n%s\n' "${2:-}" >"$WANTAUTHFILE" 2>/dev/null; spawn_bg _reset_auth ;;
     enable-autostart)  enable_autostart && echo "enabled" || echo "failed" ;;
     disable-autostart) disable_autostart && echo "disabled" || echo "failed" ;;
     _start)   do_start ;;
@@ -454,5 +487,6 @@ case "${1:-}" in
     _restart) TS_QUIET=1; set_state "restarting"; do_stop; do_start ;;
     _set_storage) TS_QUIET=1; set_cache "$(cat "$WANTCACHEFILE" 2>/dev/null)"; if is_running; then set_state "restarting"; do_stop; do_start; else set_state "stopped"; fi ;;
     _set_auth) TS_QUIET=1; _au=$(sed -n '1p' "$WANTAUTHFILE" 2>/dev/null); _ap=$(sed -n '2p' "$WANTAUTHFILE" 2>/dev/null); rm -f "$WANTAUTHFILE" 2>/dev/null; if set_auth "$_au" "$_ap" >/dev/null 2>&1; then if is_running; then set_state "restarting"; do_stop; do_start; else set_state "stopped"; fi; else set_state "error:auth"; fi ;;
-    *) echo "usage: $0 {install|start|stop|restart|status|logs|datadir|cache|list-usb|set-storage|set-auth|enable-autostart|disable-autostart}"; exit 1 ;;
+    _reset_auth) TS_QUIET=1; _ap=$(sed -n '2p' "$WANTAUTHFILE" 2>/dev/null); rm -f "$WANTAUTHFILE" 2>/dev/null; if reset_auth "$_ap" >/dev/null 2>&1; then if is_running; then set_state "restarting"; do_stop; do_start; else set_state "stopped"; fi; else set_state "error:auth"; fi ;;
+    *) echo "usage: $0 {install|start|stop|restart|status|logs|datadir|cache|list-usb|set-storage|set-auth|reset-auth|enable-autostart|disable-autostart}"; exit 1 ;;
 esac
