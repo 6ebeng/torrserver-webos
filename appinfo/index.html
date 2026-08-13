@@ -23,7 +23,13 @@
             <section class="card">
                 <div class="row"><span class="k">Status</span><span id="state" class="v">checking&hellip;</span></div>
                 <div class="row"><span class="k">App Version</span><span id="appversion" class="v">1.2.0</span></div>
-                <div class="row"><span class="k">Server Version</span><span id="version" class="v">&mdash;</span></div>
+                <div class="row"><span class="k">Server Version</span>
+                    <span class="rowend">
+                        <span class="v"><span id="version">&mdash;</span> <span id="updatebadge"
+                                class="pill hidden">Update available</span></span>
+                        <button id="btnSelectVersion" class="btn rowbtn">Select version</button>
+                    </span>
+                </div>
                 <div class="row"><span class="k">Architecture</span><span id="arch" class="v">&mdash;</span></div>
                 <div class="row"><span class="k">Autostart</span>
                     <span class="rowend">
@@ -51,6 +57,7 @@
             <section class="actions">
                 <button id="btnToggle" class="btn primary">Start</button>
                 <button id="btnRestart" class="btn">Restart</button>
+                <button id="btnUpdate" class="btn">Update server</button>
                 <button id="btnOpen" class="btn">Open Web UI</button>
                 <button id="btnLampa" class="btn hidden">Lampa</button>
                 <button id="btnMedia" class="btn">MediaPlayer</button>

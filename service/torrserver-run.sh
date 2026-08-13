@@ -2,8 +2,9 @@
 #
 # TorrServer control script for webOS (POSIX sh / busybox compatible).
 #
-# Subcommands: install | start | stop | restart | status | logs | datadir |
-#              cache | list-usb | set-storage | set-auth | reset-auth |
+# Subcommands: install | start | stop | restart | update | status | logs |
+#              datadir | cache | list-usb | latest | versions | select-version |
+#              set-storage | set-auth | reset-auth |
 #              enable-autostart | disable-autostart
 #
 # It auto-detects a writable + exec-capable data directory, installs the
@@ -16,10 +17,19 @@ set -u
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
 PORT=8090
-# The TorrServer binary is bundled with the app (see build.ps1) - there is no
-# runtime download, so no GitHub API, no checksum-less fetch, and no fragile
-# dependence on upstream release asset names.
+REPO="YouROK/TorrServer"
+API_URL="https://api.github.com/repos/$REPO/releases/latest"
+RELEASES_URL="https://api.github.com/repos/$REPO/releases?per_page=100"
+UA="torrserver-webos"
+# The TorrServer binary is bundled with the app (see build.ps1) and is the
+# default - it works offline with no runtime download. The version picker and
+# Update button can OPTIONALLY download a different/newer release over it when
+# the user explicitly asks; that is the only time the network is used.
 BUNDLED_BIN="$SCRIPT_DIR/bin/TorrServer"
+# The TorrServer version bundled into this package (kept in sync with
+# build.ps1's $TorrServerTag). Used to tell whether the installed binary is the
+# bundled one or a user-downloaded release.
+BUNDLED_VER="MatriX.142.2"
 AUTOSTART_SRC="$SCRIPT_DIR/torrserver-autostart"
 AUTOSTART_DST="/var/lib/webosbrew/init.d/torrserver"
 # App icon shown on toast notifications. The service lives in .../services/<id>
@@ -70,6 +80,13 @@ CACHEFILE="$DATA_DIR/.cache_path"
 WANTCACHEFILE="$DATA_DIR/.want_cache"
 WANTAUTHFILE="$DATA_DIR/.want_auth"
 ACCS_FILE="$DATA_SUB/accs.db"
+# Optional runtime-download state (version picker / Update button).
+PART="$DATA_DIR/torrserver.part"
+TOTALFILE="$DATA_DIR/total"
+LATESTFILE="$DATA_DIR/latest"
+VERSIONSFILE="$DATA_DIR/versions"
+WANTVERFILE="$DATA_DIR/.want_version"
+SRCFILE="$DATA_DIR/.bin_source"
 mkdir -p "$DATA_DIR" "$APP_DIR" "$DATA_SUB" "$DATA_DIR/tmp" 2>/dev/null
 
 set_state() { echo "$1" >"$STATEFILE" 2>/dev/null; }
@@ -115,9 +132,91 @@ spawn_bg() {
     fi
 }
 
-# webOS userspace is 32-bit ARM on every TV, and the TorrServer binary is
-# bundled with the app, so there is exactly one architecture to care about:
+# webOS userspace is 32-bit ARM on every TV, so the bundled binary and every
+# downloadable release we offer are arm7:
 ARCH="arm7"
+
+# --- Optional runtime download (version picker / Update button) -------------
+# These are only used when the user explicitly picks a different TorrServer
+# release or presses Update. The default path never touches the network.
+
+# download <url> <dest>  -> tries curl, then wget, then the Node fallback.
+# Timeouts abort only on a stalled connection (not on a slow-but-progressing
+# large download), so a flaky network can never wedge us on "downloading".
+download() {
+    _u="$1"; _d="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
+             --retry 3 --retry-delay 3 -A "$UA" -o "$_d" "$_u" && return 0
+    fi
+    if command -v wget >/dev/null 2>&1; then
+        wget -q -T 60 -O "$_d" "$_u" && return 0
+    fi
+    if command -v node >/dev/null 2>&1; then
+        node "$SCRIPT_DIR/download.js" "$_u" "$_d" && return 0
+    fi
+    return 1
+}
+
+# remote_size <url> -> best-effort Content-Length of a remote file, printed as
+# a plain integer (empty on failure). Used both for the download progress
+# percentage and for the free-space pre-flight check.
+remote_size() {
+    _u="$1"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsIL --connect-timeout 15 -A "$UA" "$_u" 2>/dev/null \
+            | grep -i '^content-length:' | tail -n1 | tr -dc '0-9'
+        return 0
+    fi
+    if command -v wget >/dev/null 2>&1; then
+        wget -q -S --spider -T 15 "$_u" 2>&1 \
+            | grep -i 'content-length:' | tail -n1 | tr -dc '0-9'
+        return 0
+    fi
+}
+
+# Fetch the latest release tag from GitHub and cache it (1h) to keep the
+# periodic update check cheap.
+do_latest() {
+    if [ -f "$LATESTFILE" ]; then
+        _age=$(( $(date +%s) - $(date -r "$LATESTFILE" +%s 2>/dev/null || echo 0) ))
+        if [ "$_age" -lt 3600 ]; then cat "$LATESTFILE"; return 0; fi
+    fi
+    _j="$DATA_DIR/release-check.json"
+    if download "$API_URL" "$_j"; then
+        _v=$(grep -o '"tag_name"[ ]*:[ ]*"[^"]*"' "$_j" | head -n1 | sed 's/.*"\([^"]*\)"$/\1/')
+        rm -f "$_j" 2>/dev/null
+        if [ -n "$_v" ]; then echo "$_v" >"$LATESTFILE"; echo "$_v"; return 0; fi
+    fi
+    cat "$LATESTFILE" 2>/dev/null
+}
+
+# List the available release tags from GitHub (newest first), one per line as
+# "tag<TAB>prerelease", so the UI can offer a manual version picker.
+do_versions() {
+    if [ -f "$VERSIONSFILE" ]; then
+        _age=$(( $(date +%s) - $(date -r "$VERSIONSFILE" +%s 2>/dev/null || echo 0) ))
+        if [ "$_age" -lt 3600 ]; then cat "$VERSIONSFILE"; return 0; fi
+    fi
+    _j="$DATA_DIR/releases.json"
+    if download "$RELEASES_URL" "$_j"; then
+        grep -oE '"tag_name"[ ]*:[ ]*"[^"]*"' "$_j" | sed 's/.*"\([^"]*\)"$/\1/' > "$_j.tags"
+        grep -oE '"prerelease"[ ]*:[ ]*(true|false)' "$_j" | sed 's/.*:[ ]*//' > "$_j.pre"
+        _tags=$(awk 'NR==FNR{p[FNR]=$0; next}{printf "%s\t%s\n", $0, (p[FNR]=="" ? "false" : p[FNR])}' "$_j.pre" "$_j.tags")
+        rm -f "$_j" "$_j.tags" "$_j.pre" 2>/dev/null
+        if [ -n "$_tags" ]; then
+            printf '%s\n' "$_tags" >"$VERSIONSFILE"
+            cat "$VERSIONSFILE"
+            return 0
+        fi
+    fi
+    cat "$VERSIONSFILE" 2>/dev/null
+}
+
+# Free kilobytes available on the filesystem that holds the data dir.
+free_kb() {
+    df -k "$DATA_DIR" 2>/dev/null | awk 'NR==2{print $4}'
+}
 
 # Is TorrServer alive?  We deliberately avoid "pgrep -f <binary path>": the path
 # is part of pgrep's own argv, so when the UI polls status every 2s two pgrep
@@ -142,18 +241,66 @@ is_running() {
     return 1
 }
 
-# Install the bundled TorrServer binary into the data dir. The binary ships
-# inside the IPK (see build.ps1), so this is a local copy - nothing is fetched
-# from the network and the bytes are the exact ones verified at build time.
+# do_install [version]
+#   no arg   -> install the BUNDLED binary (offline, default path).
+#   version  -> download that TorrServer release over the bundled one (the
+#               version picker / Update button). A free-space check runs first
+#               so a too-small data partition fails cleanly instead of writing
+#               a truncated binary.
 do_install() {
-    [ "${TS_QUIET:-}" = 1 ] || set_state "installing"
-    if [ ! -f "$BUNDLED_BIN" ]; then set_state "error:binmissing"; return 1; fi
+    _want="${1:-}"
+
+    # Default: copy the bundled binary. No network involved.
+    if [ -z "$_want" ]; then
+        [ "${TS_QUIET:-}" = 1 ] || set_state "installing"
+        if [ ! -f "$BUNDLED_BIN" ]; then set_state "error:binmissing"; return 1; fi
+        mkdir -p "$APP_DIR" 2>/dev/null
+        if ! cp "$BUNDLED_BIN" "$BIN" 2>/dev/null; then set_state "error:install"; return 1; fi
+        chmod +x "$BIN" 2>/dev/null
+        if [ ! -x "$BIN" ]; then set_state "error:binmissing"; return 1; fi
+        echo "$BUNDLED_VER" >"$VERFILE" 2>/dev/null
+        echo "bundled" >"$SRCFILE" 2>/dev/null
+        [ "${TS_QUIET:-}" = 1 ] || set_state "stopped"
+        return 0
+    fi
+
+    # Optional: download a specific release over the bundled binary.
+    [ "${TS_QUIET:-}" = 1 ] || set_state "downloading"
+    asset="TorrServer-linux-$ARCH"
+    url="https://github.com/$REPO/releases/download/$_want/$asset"
+    rm -f "$PART" "$TOTALFILE" 2>/dev/null
+
+    # Probe the asset size up front (also drives the progress percentage).
+    total=$(remote_size "$url")
+    [ -n "$total" ] && echo "$total" >"$TOTALFILE"
+
+    # Pre-flight: make sure there is room for the download PLUS the installed
+    # copy, so we never fill the partition and truncate the binary.
+    if [ -n "$total" ]; then
+        _needkb=$(( (total / 1024) * 2 + 10240 ))
+        _havekb=$(free_kb)
+        if [ -n "$_havekb" ] && [ "$_havekb" -lt "$_needkb" ]; then
+            set_state "error:space"
+            return 1
+        fi
+    fi
+
+    # Download to a .part file so do_status can report live byte progress.
+    if ! download "$url" "$PART"; then set_state "error:download"; rm -f "$PART"; return 1; fi
+
+    # Guard against a captive-portal / 404 HTML page being saved as the binary:
+    # a real TorrServer build starts with the ELF magic bytes (7f 45 4c 46).
+    magic=$(od -An -tx1 -N4 "$PART" 2>/dev/null | tr -d ' \n')
+    if [ "$magic" != "7f454c46" ]; then set_state "error:download"; rm -f "$PART"; return 1; fi
+
     mkdir -p "$APP_DIR" 2>/dev/null
-    if ! cp "$BUNDLED_BIN" "$BIN" 2>/dev/null; then set_state "error:install"; return 1; fi
+    if ! mv "$PART" "$BIN" 2>/dev/null; then set_state "error:install"; rm -f "$PART"; return 1; fi
     chmod +x "$BIN" 2>/dev/null
     if [ ! -x "$BIN" ]; then set_state "error:binmissing"; return 1; fi
-    # Record the bundled TorrServer version so the UI can show it.
-    echo "MatriX.142.2" >"$VERFILE" 2>/dev/null
+
+    echo "$_want" >"$VERFILE" 2>/dev/null
+    echo "downloaded" >"$SRCFILE" 2>/dev/null
+    rm -f "$PART" "$TOTALFILE" "$DATA_DIR"/*.part 2>/dev/null
     [ "${TS_QUIET:-}" = 1 ] || set_state "stopped"
     return 0
 }
@@ -364,10 +511,18 @@ set_cache() {
 
 do_start() {
     if is_running; then set_state "running"; return 0; fi
-    # Install/reinstall the bundled binary if it is missing or is a different
-    # version than the one shipped in this package (e.g. after an app update).
+    # Make sure a binary is installed. The bundled binary is the default; a
+    # binary the user downloaded via the version picker / Update is left alone
+    # (it persists across restarts and app updates until they pick another).
+    _src=$(cat "$SRCFILE" 2>/dev/null)
     _instver=$(cat "$VERFILE" 2>/dev/null)
-    if [ ! -x "$BIN" ] || [ "$_instver" != "MatriX.142.2" ]; then do_install || return 1; fi
+    if [ ! -x "$BIN" ]; then
+        do_install || return 1
+    elif [ "$_src" != "downloaded" ] && [ "$_instver" != "$BUNDLED_VER" ]; then
+        # Bundled-source install whose version no longer matches this package
+        # (e.g. the app was updated with a newer bundled build): refresh it.
+        do_install || return 1
+    fi
 
     [ "${TS_QUIET:-}" = 1 ] || set_state "starting"
 
@@ -458,18 +613,28 @@ do_status() {
         case "$st" in running) st="stopped" ;; esac
     fi
     ver=$(cat "$VERFILE" 2>/dev/null)
+    src=$(cat "$SRCFILE" 2>/dev/null); [ -z "$src" ] && src="bundled"
+
+    # Live download progress (only non-zero while a version is downloading).
+    dlb=0
+    if [ -f "$PART" ]; then dlb=$(wc -c <"$PART" 2>/dev/null | tr -d ' '); fi
+    [ -z "$dlb" ] && dlb=0
+    tot=0
+    if [ -f "$TOTALFILE" ]; then tot=$(cat "$TOTALFILE" 2>/dev/null | tr -d ' '); fi
+    [ -z "$tot" ] && tot=0
 
     if autostart_enabled; then as=true; else as=false; fi
     if autostart_available; then aa=true; else aa=false; fi
     cp=$(cache_path)
     ensure_accs
-    printf '{"running":%s,"installed":%s,"state":"%s","version":"%s","arch":"%s","port":%s,"dataDir":"%s","cachePath":"%s","autostart":%s,"autostartAvailable":%s,"httpUser":"%s","httpPass":"%s"}\n' \
-        "$r" "$ins" "$st" "$ver" "$ARCH" "$PORT" "$DATA_DIR" "$cp" "$as" "$aa" "$(http_user)" "$(http_pass)"
+    printf '{"running":%s,"installed":%s,"state":"%s","version":"%s","arch":"%s","port":%s,"downloadedBytes":%s,"totalBytes":%s,"binSource":"%s","dataDir":"%s","cachePath":"%s","autostart":%s,"autostartAvailable":%s,"httpUser":"%s","httpPass":"%s"}\n' \
+        "$r" "$ins" "$st" "$ver" "$ARCH" "$PORT" "$dlb" "$tot" "$src" "$DATA_DIR" "$cp" "$as" "$aa" "$(http_user)" "$(http_pass)"
 }
 
 case "${1:-}" in
     start)    spawn_bg _start ;;
     install)  spawn_bg _install ;;
+    update)   spawn_bg _update ;;
     restart)  spawn_bg _restart ;;
     stop)     do_stop ;;
     status)   do_status ;;
@@ -477,6 +642,9 @@ case "${1:-}" in
     datadir)  echo "$DATA_DIR" ;;
     cache)    cache_path ;;
     list-usb) list_usb ;;
+    latest)   do_latest ;;
+    versions) do_versions ;;
+    select-version) echo "${2:-}" >"$WANTVERFILE" 2>/dev/null; spawn_bg _install_version ;;
     set-storage) echo "${2:-}" >"$WANTCACHEFILE" 2>/dev/null; spawn_bg _set_storage ;;
     set-auth) printf '%s\n%s\n' "${2:-}" "${3:-}" >"$WANTAUTHFILE" 2>/dev/null; spawn_bg _set_auth ;;
     reset-auth) printf '\n%s\n' "${2:-}" >"$WANTAUTHFILE" 2>/dev/null; spawn_bg _reset_auth ;;
@@ -485,8 +653,10 @@ case "${1:-}" in
     _start)   do_start ;;
     _install) do_install ;;
     _restart) TS_QUIET=1; set_state "restarting"; do_stop; do_start ;;
+    _update)  TS_QUIET=1; set_state "updating"; do_stop; do_install "$(do_latest)" && do_start ;;
+    _install_version) TS_QUIET=1; set_state "downloading"; do_stop; do_install "$(cat "$WANTVERFILE" 2>/dev/null)" && do_start ;;
     _set_storage) TS_QUIET=1; set_cache "$(cat "$WANTCACHEFILE" 2>/dev/null)"; if is_running; then set_state "restarting"; do_stop; do_start; else set_state "stopped"; fi ;;
     _set_auth) TS_QUIET=1; _au=$(sed -n '1p' "$WANTAUTHFILE" 2>/dev/null); _ap=$(sed -n '2p' "$WANTAUTHFILE" 2>/dev/null); rm -f "$WANTAUTHFILE" 2>/dev/null; if set_auth "$_au" "$_ap" >/dev/null 2>&1; then if is_running; then set_state "restarting"; do_stop; do_start; else set_state "stopped"; fi; else set_state "error:auth"; fi ;;
     _reset_auth) TS_QUIET=1; _ap=$(sed -n '2p' "$WANTAUTHFILE" 2>/dev/null); rm -f "$WANTAUTHFILE" 2>/dev/null; if reset_auth "$_ap" >/dev/null 2>&1; then if is_running; then set_state "restarting"; do_stop; do_start; else set_state "stopped"; fi; else set_state "error:auth"; fi ;;
-    *) echo "usage: $0 {install|start|stop|restart|status|logs|datadir|cache|list-usb|set-storage|set-auth|reset-auth|enable-autostart|disable-autostart}"; exit 1 ;;
+    *) echo "usage: $0 {install|start|stop|restart|update|status|logs|datadir|cache|list-usb|latest|versions|select-version|set-storage|set-auth|reset-auth|enable-autostart|disable-autostart}"; exit 1 ;;
 esac
