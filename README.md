@@ -22,7 +22,8 @@ powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Autostart  # also e
 ## Usage
 
 1. Launch **TorrServer** on the TV and press **Start**. The bundled TorrServer binary is installed locally and started.
-2. Manage from any device at `http://<tv-ip>:8090`, signing in with the **Web UI login** credentials shown in the app.
+2. Press **Torrents** to use the on-TV client: add a magnet link / hash / .torrent URL, browse what is on the server, and play a file directly on the TV — all with the remote.
+3. Or manage it from any device at `http://<tv-ip>:8090`, signing in with the **Web UI login** credentials shown in the app.
 
 Each control sits inline with the value it changes:
 
@@ -31,7 +32,9 @@ Each control sits inline with the value it changes:
 - **Server Version** row → **Select version** (download a different release, e.g. to downgrade) and an **Update available** badge when a newer TorrServer release exists.
 - **Autostart** row → an **Enabled/Disabled** toggle (**off by default**; enabling it writes a boot hook, which requires a rooted TV with the Homebrew Channel). Hidden, with an explanation, on non-rooted TVs.
 - **Cache storage** row → **Change** (move the torrent cache to a USB drive).
-- The actions bar also has **Update server**, **Open Web UI**, **MediaPlayer** and **Logs** (plus **Lampa** when the Lampa app is installed).
+- The actions bar also has **Torrents**, **Update server**, **Open Web UI**, **MediaPlayer** and **Logs** (plus **Lampa** when the Lampa app is installed).
+
+**On-TV client (Torrents):** a D-pad-driven torrent client built into the app. **+ Add** opens an on-screen keyboard to paste a magnet link, info hash or .torrent URL; the list shows each torrent with its size and live download speed; opening one lists its playable files, and pressing a file starts playback in the app's built-in video player (Back stops). **Remove** deletes a torrent from the server. Because webOS has no API to hand a stream URL to the native player, playback uses an embedded HTML5 `<video>` element (MP4/H.264 plays most reliably; MKV support depends on the TV's Chromium).
 
 The header shows the TV's **Firmware version** and **webOS version**. The **Status** row is a coloured chip (green when running, grey when stopped), and the footer shows a context tip for the current state. **Logs** open in a modal overlay (D-pad up/down scrolls). **MediaPlayer** opens the TV's built-in media player (Photo/Video on webOS &lt; 6, MediaPlayer on webOS 6+). **Open Web UI** launches the TV browser at the TorrServer address.
 

@@ -641,6 +641,7 @@ case "${1:-}" in
     logs)     tail -n "${2:-200}" "$LOG" 2>/dev/null ;;
     datadir)  echo "$DATA_DIR" ;;
     cache)    cache_path ;;
+    creds)    ensure_accs; printf '%s\n%s\n' "$(http_user)" "$(http_pass)" ;;
     list-usb) list_usb ;;
     latest)   do_latest ;;
     versions) do_versions ;;

@@ -1047,4 +1047,20 @@
 		};
 		xhr.send();
 	});
+
+	// Expose the handful of helpers the on-TV torrent client (torrents.js)
+	// needs. app.js is a closed module, so this is the only bridge.
+	window.TS = {
+		svc: svc,
+		msg: msg,
+		escapeHtml: escapeHtml,
+		$: $,
+		isDisabled: isDisabled,
+		getFirstUrl: function () {
+			return firstUrl;
+		},
+		getStatus: function () {
+			return lastStatus;
+		},
+	};
 })();

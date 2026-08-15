@@ -134,6 +134,111 @@ function lunaSend(uri, payload, cb) {
 	});
 }
 
+// --- TorrServer HTTP API proxy ---------------------------------------------
+// The front-end cannot call the TorrServer HTTP API directly (auth + the old
+// webview), so it calls our `torr` Luna method and we proxy to 127.0.0.1:8090
+// here. We are on the same host and share the network namespace with the
+// (jailed) TorrServer process, so loopback always works.
+var http = require('http');
+var torrCreds = null; // cached "user\npass" read from the control script
+
+function readTorrCreds(cb) {
+	if (torrCreds) {
+		cb(torrCreds);
+		return;
+	}
+	runScript(['creds'], 10000, function (err, stdout) {
+		var s = String(stdout || '').replace(/\r/g, '');
+		var parts = s.split('\n');
+		var user = (parts[0] || '').replace(/^\s+|\s+$/g, '') || 'torrserver';
+		var pass = parts[1] || '';
+		torrCreds = { user: user, pass: pass };
+		cb(torrCreds);
+	});
+}
+
+// torrCall(action, payload, cb) -> POST /torrents (or another endpoint) with
+// Basic auth, returning the parsed JSON (or raw text) to cb(err, data).
+function torrCall(endpoint, payload, cb) {
+	readTorrCreds(function (creds) {
+		var body = JSON.stringify(payload || {});
+		var opts = {
+			host: '127.0.0.1',
+			port: PORT,
+			path: endpoint,
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Content-Length': Buffer.byteLength(body),
+				// Node 0.12 has no Buffer.from; use the legacy constructor.
+				Authorization: 'Basic ' + new Buffer(creds.user + ':' + creds.pass).toString('base64'),
+			},
+		};
+		var req = http.request(opts, function (res) {
+			var chunks = [];
+			res.on('data', function (c) {
+				chunks.push(c);
+			});
+			res.on('end', function () {
+				var text = Buffer.concat(chunks).toString('utf8');
+				var data = text;
+				try {
+					data = JSON.parse(text);
+				} catch (e) {
+					/* leave as text */
+				}
+				cb(null, { status: res.statusCode, data: data });
+			});
+		});
+		req.on('error', function (e) {
+			cb(e);
+		});
+		req.setTimeout(20000, function () {
+			req.abort();
+			cb(new Error('timeout'));
+		});
+		req.write(body);
+		req.end();
+	});
+}
+
+// Build a stream URL for a file, embedding the credentials so the embedded
+// HTML5 <video> element (which cannot send an Authorization header) can play
+// it directly.
+service.register('playUrl', function (message) {
+	var hash = (message.payload && message.payload.hash) || '';
+	var index = (message.payload && message.payload.index) || 1;
+	var name = (message.payload && message.payload.name) || 'video.mp4';
+	readTorrCreds(function (creds) {
+		var url =
+			'http://' +
+			creds.user +
+			':' +
+			creds.pass +
+			'@127.0.0.1:' +
+			PORT +
+			'/play/' +
+			encodeURIComponent(hash) +
+			'/' +
+			encodeURIComponent(String(index));
+		message.respond({ returnValue: true, url: url });
+	});
+});
+
+// Proxy a TorrServer API call from the front-end. payload = {action, ...}.
+service.register('torr', function (message) {
+	var p = message.payload || {};
+	var endpoint = p._endpoint || '/torrents';
+	delete p._endpoint;
+	torrCall(endpoint, p, function (err, res) {
+		if (err) {
+			message.respond({ returnValue: false, errorText: String((err && err.message) || err) });
+			return;
+		}
+		message.respond({ returnValue: true, status: res.status, data: res.data });
+	});
+});
+
 function readStatus(cb) {
 	runScript(['status'], 15000, function (err, stdout) {
 		var data = { running: false, installed: false, state: 'unknown', port: PORT };

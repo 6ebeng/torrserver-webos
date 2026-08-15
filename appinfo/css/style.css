@@ -239,3 +239,48 @@ footer b { color: #cdded4; }
   outline: none;
 }
 .field:focus { border-color: #3fb57a; }
+
+/* --- On-TV torrent client ---------------------------------------------- */
+/* Full-screen list view that replaces the status card when open. It sits
+   inside #app's flex column, so it flexes to fill the space under the header. */
+#torrentsview { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.tbar { display: flex; align-items: center; margin-bottom: 24px; }
+.tbar .ttitle { flex: 1; text-align: center; font-size: 36px; font-weight: 700; }
+.tlist { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 12px 6px 6px; }
+.trow {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  padding: 18px 22px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  border: 3px solid transparent;
+  background: #26342c;
+  color: #e8f3ec;
+  cursor: pointer;
+  outline: none;
+}
+.trow:last-child { margin-bottom: 0; }
+.trow:focus { border-color: #3fb57a; transform: scale(1.01); }
+.trow .tt { display: block; font-size: 27px; font-weight: 600; margin-bottom: 6px; }
+.trow .tmeta { display: block; font-size: 20px; color: #9fb6a9; }
+.trow .tmeta .sz { color: #d6ffe2; }
+.trow .tmeta .spd { color: #e0a95a; }
+.tempty { color: #8ca397; font-size: 24px; padding: 40px 10px; text-align: center; }
+
+/* Detail modal file rows reuse .vitem; a small subtitle line under the name. */
+.vitem .fsize { float: right; color: #9fb6a9; font-size: 18px; margin-left: 10px; }
+
+/* Full-screen embedded player. */
+#player { background: #000; flex-direction: column; }
+#player video { width: 100%; height: 100%; background: #000; }
+#playerhint {
+  position: absolute;
+  bottom: 18px;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}

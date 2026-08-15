@@ -57,6 +57,7 @@
             <section class="actions">
                 <button id="btnToggle" class="btn primary">Start</button>
                 <button id="btnRestart" class="btn">Restart</button>
+                <button id="btnTorrents" class="btn">Torrents</button>
                 <button id="btnUpdate" class="btn">Update server</button>
                 <button id="btnOpen" class="btn">Open Web UI</button>
                 <button id="btnLampa" class="btn hidden">Lampa</button>
@@ -69,6 +70,16 @@
             <span id="msg">Press <b>Start</b> to launch TorrServer.</span>
             <span id="credit">Coded by Tishko Rasoul &middot; github.com/6ebeng/torrserver-webos</span>
         </footer>
+
+        <!-- On-TV torrent client: full-screen list of torrents on the server -->
+        <section id="torrentsview" class="hidden">
+            <div class="tbar">
+                <button id="btnTBack" class="btn rowbtn">&larr; Back</button>
+                <span class="ttitle">Torrents</span>
+                <button id="btnTAdd" class="btn rowbtn primary">+ Add</button>
+            </div>
+            <div id="tlist" class="tlist">Loading&hellip;</div>
+        </section>
     </div>
 
     <div id="vpicker" class="overlay hidden">
@@ -95,6 +106,38 @@
         </div>
     </div>
 
+    <div id="addmodal" class="overlay hidden">
+        <div class="dialog">
+            <div class="dialog-title">Add torrent</div>
+            <div class="dialog-sub">Paste a magnet link, info hash, or a link to a .torrent file.</div>
+            <label class="field-label" for="addLink">Magnet / hash / link</label>
+            <input id="addLink" class="field" type="text" autocomplete="off" spellcheck="false">
+            <div class="dialog-actions">
+                <button id="btnAddCancel" class="btn">Cancel</button>
+                <button id="btnAddSave" class="btn primary">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="detailmodal" class="overlay hidden">
+        <div class="dialog wide">
+            <div class="dialog-title" id="dTitle">Torrent</div>
+            <div class="dialog-sub" id="dSub"></div>
+            <div id="dlist" class="vlist">Loading&hellip;</div>
+            <div class="dialog-actions split">
+                <button id="btnDRemove" class="btn">Remove</button>
+                <span class="dialog-actions-right">
+                    <button id="btnDClose" class="btn">Close</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div id="player" class="overlay hidden">
+        <video id="video" controls autoplay></video>
+        <div id="playerhint">Back / Return stops playback</div>
+    </div>
+
     <div id="authmodal" class="overlay hidden">
         <div class="dialog">
             <div class="dialog-title">Web UI login</div>
@@ -116,6 +159,7 @@
 
     <script src="js/luna-bridge.js"></script>
     <script src="js/app.js"></script>
+    <script src="js/torrents.js"></script>
 </body>
 
 </html>
